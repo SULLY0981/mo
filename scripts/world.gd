@@ -31,6 +31,7 @@ class Enemy:
 	var xp := 1.0
 	var kb := Vector2.ZERO
 	var flash := 0.0
+	var flash_cd := 0.0
 	var slow := 0.0
 	var hit_cd := {}
 	var elite := false
@@ -220,7 +221,7 @@ func _ready() -> void:
 func _build_materials() -> void:
 	flash_mat = StandardMaterial3D.new()
 	flash_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	flash_mat.albedo_color = Color(2.5, 2.5, 2.5)
+	flash_mat.albedo_color = Color(1.3, 1.3, 1.3)
 	elite_mat = StandardMaterial3D.new()
 	elite_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	elite_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -233,14 +234,14 @@ func _build_materials() -> void:
 	slow_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
 	slow_mat.albedo_color = Color(0.4, 0.8, 1.0, 0.45)
 	bolt_mesh = SphereMesh.new(); bolt_mesh.radius = 0.15; bolt_mesh.height = 0.3; bolt_mesh.radial_segments = 12; bolt_mesh.rings = 6
-	bolt_mat = _glow_mat(Color(1.0, 0.55, 0.15), 10.0)
+	bolt_mat = _glow_mat(Color(1.0, 0.55, 0.15), 4.0)
 	frost_mesh = PrismMesh.new(); frost_mesh.size = Vector3(0.16, 0.6, 0.08)
-	frost_mat = _glow_mat(Color(0.6, 0.9, 1.0), 4.0)
+	frost_mat = _glow_mat(Color(0.6, 0.9, 1.0), 2.4)
 	bullet_mesh = SphereMesh.new(); bullet_mesh.radius = 0.22; bullet_mesh.height = 0.44; bullet_mesh.radial_segments = 10; bullet_mesh.rings = 5
-	bullet_mat = _glow_mat(Color(1.0, 0.3, 0.85), 5.0)
-	orb_mat = _glow_mat(Color(1.0, 0.8, 0.3), 7.0)
+	bullet_mat = _glow_mat(Color(1.0, 0.3, 0.85), 3.0)
+	orb_mat = _glow_mat(Color(1.0, 0.8, 0.3), 3.0)
 	bolt_seg_mesh = BoxMesh.new(); bolt_seg_mesh.size = Vector3(0.07, 0.07, 1.0)
-	bolt_seg_mat = _glow_mat(Color(0.55, 0.85, 1.0), 9.0)
+	bolt_seg_mat = _glow_mat(Color(0.55, 0.85, 1.0), 4.5)
 	ring_mesh = PlaneMesh.new(); ring_mesh.size = Vector2(2, 2)
 	var sh := Shader.new()
 	sh.code = """
@@ -253,8 +254,8 @@ void fragment() {
 	float d = length(p);
 	float r = mix(0.15, 1.0, sqrt(progress));
 	float ring = smoothstep(0.16, 0.0, abs(d - r)) * (1.0 - progress);
-	float fill = smoothstep(r, 0.0, d) * 0.12 * (1.0 - progress);
-	vec3 c = tint.rgb * 3.0;
+	float fill = smoothstep(r, 0.0, d) * 0.06 * (1.0 - progress);
+	vec3 c = tint.rgb * 1.4;
 	ALBEDO = c;
 	ALPHA = clamp(ring + fill, 0.0, 1.0);
 }
@@ -286,10 +287,10 @@ func _build_environment() -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 1.05
 	env.glow_enabled = true
-	env.glow_intensity = 1.25
-	env.glow_strength = 1.1
-	env.glow_bloom = 0.06
-	env.glow_hdr_threshold = 0.75
+	env.glow_intensity = 0.85
+	env.glow_strength = 1.0
+	env.glow_bloom = 0.02
+	env.glow_hdr_threshold = 1.1
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
 	env.set_glow_level(0, 0.0); env.set_glow_level(1, 1.0); env.set_glow_level(2, 1.0); env.set_glow_level(3, 0.6); env.set_glow_level(4, 0.4)
 	env.fog_enabled = true
@@ -502,8 +503,6 @@ func _pool_get(kind: String) -> Node3D:
 		"bolt":
 			var mi := MeshInstance3D.new(); mi.mesh = bolt_mesh; mi.material_override = bolt_mat
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			var l := OmniLight3D.new(); l.light_color = Color(1.0, 0.6, 0.25); l.light_energy = 1.4; l.omni_range = 3.0
-			mi.add_child(l)
 			node = mi
 		"frost":
 			var mi := MeshInstance3D.new(); mi.mesh = frost_mesh; mi.material_override = frost_mat
@@ -884,7 +883,9 @@ func hurt_enemy(e: Enemy, base: float, kdir: Vector2, kb: float, w: Weapon) -> v
 		dmg *= 2.0
 	dmg *= randf_range(0.92, 1.08)
 	e.hp -= dmg
-	e.flash = 0.08
+	if e.flash_cd <= 0.0:
+		e.flash = 0.07
+		e.flash_cd = 0.3 if e.boss else 0.15
 	if w:
 		w.dmg_total += minf(dmg, dmg + e.hp)
 	if kb > 0 and not e.boss:
@@ -1231,6 +1232,8 @@ func _update_enemies(dt: float) -> void:
 		e.spawn_t = minf(1.0, e.spawn_t + dt * 2.5)
 		if e.flash > 0:
 			e.flash -= dt
+		if e.flash_cd > 0:
+			e.flash_cd -= dt
 		if e.slow > 0:
 			e.slow -= dt
 		var to := ppos - e.pos
@@ -1737,7 +1740,7 @@ func burst(at: Vector2, height: float, color: Color, amount: float) -> void:
 	particle_next = (particle_next + 1) % particle_pool.size()
 	gp.position = Vector3(at.x, height, at.y)
 	var pm: ParticleProcessMaterial = gp.process_material
-	pm.color = Color(color.r * 2.2, color.g * 2.2, color.b * 2.2)
+	pm.color = Color(color.r * 1.5, color.g * 1.5, color.b * 1.5)
 	gp.amount_ratio = clampf(amount, 0.1, 1.0)
 	var s := clampf(amount, 1.0, 3.0)
 	pm.initial_velocity_max = 4.0 * s
@@ -1769,7 +1772,7 @@ func fx_light(at: Vector2, color: Color, energy: float, life: float) -> void:
 			l.omni_range = 4.0 + energy * 0.6
 			f[1] = life
 			f[2] = life
-			f[3] = energy
+			f[3] = energy * 0.5
 			return
 
 
@@ -1924,7 +1927,7 @@ func sync_visuals(dt: float) -> void:
 	for i in cnt:
 		var g: Array = gems[i]
 		var v: float = g[1]
-		var col := Color(0.4, 2.2, 2.4) if v < 5 else (Color(0.5, 2.6, 0.9) if v < 25 else Color(2.8, 0.5, 0.7))
+		var col := Color(0.35, 1.5, 1.7) if v < 5 else (Color(0.4, 1.8, 0.6) if v < 25 else Color(2.0, 0.35, 0.5))
 		var s := 1.3 if v < 5 else (1.7 if v < 25 else 2.2)
 		var bas := Basis(Vector3.UP, t * 2.0 + i).scaled(Vector3.ONE * s)
 		mm.set_instance_transform(i, Transform3D(bas, Vector3(g[0].x, 0.35 + sin(t * 4.0 + i) * 0.08, g[0].y)))
