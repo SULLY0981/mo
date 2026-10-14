@@ -96,6 +96,10 @@ func start_run(c: String) -> void:
 	world.story.connect(_on_story)
 	ui.show_hud(world)  # before start_run, which emits the opening toast
 	world.start_run(c, mini(int(Save.data.get("night", 1)), int(Save.data.get("nights_won", 0)) + 1))
+	if Controls.p2_device >= 0 and not autotest:
+		world.add_coop_player(ui.p2_char, Controls.p2_device)
+	elif autotest and "--coop" in OS.get_cmdline_user_args():
+		world.add_coop_player("warden", -1)
 	Sfx.music("battle")
 
 
@@ -204,6 +208,12 @@ func _notification(what: int) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Player 2's Start pauses too (their pad isn't in the shared input map).
+	if event is InputEventJoypadButton and event.pressed and event.device == Controls.p2_device and event.button_index == JOY_BUTTON_START:
+		if world and world.mode == "run" and ui.current in ["", "pause"]:
+			toggle_pause()
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("pause"):
 		if world and world.mode == "run" and ui.current in ["", "pause"]:
 			toggle_pause()
@@ -250,8 +260,19 @@ func _process(_delta: float) -> void:
 				return
 	for i in steps:
 		world.step(1.0 / 60.0)
-		if world.has_meta("god") and world.P.hp < 30:
-			world.P.hp = world.P.max_hp
+		if "--coopdown" in OS.get_cmdline_user_args():
+			for pair in [[20.0, 0], [90.0, 1]]:
+				if world.time > pair[0] and not world.has_meta("downed%d" % pair[1]):
+					world.set_meta("downed%d" % pair[1], true)
+					world.iframe = 0
+					world.players[pair[1]].iframe = 0
+					world._hurt_player(pair[1], 99999.0, "test")
+					print("FORCED DOWN p%d at %.0f all_down=%s dying=%.2f" % [pair[1] + 1, world.time, world._all_down(), world.dying])
+		if world.has_meta("god"):
+			for ps in world.players:
+				var PP: Dictionary = world.P if ps == world.players[world.ci] else ps.P
+				if PP.hp < 30:
+					PP.hp = PP.max_hp
 		if world.over:
 			return
 	world.sync_visuals(1.0 / 60.0)
@@ -260,7 +281,7 @@ func _process(_delta: float) -> void:
 		var bs := []
 		for b in world.bosses:
 			bs.append("%s:%d" % [b.type, int(b.hp)])
-		print("t=%d lvl=%d kills=%d enemies=%d hp=%d/%d bosses=%s fps=%d" % [world.time, world.P.level, world.kills, world.enemies.size(), world.P.hp, world.P.max_hp, ",".join(bs), Engine.get_frames_per_second()])
+		print("t=%d lvl=%d kills=%d enemies=%d hp=%d/%d bosses=%s fps=%d" % [world.time, world.P.level, world.kills, world.enemies.size(), world.P.hp, world.P.max_hp, ",".join(bs), Engine.get_frames_per_second()] + ("  players=" + str(range(world.players.size()).map(func(i): return "%s:%d%s" % [world.player_info(i).char, int(world.player_info(i).P.hp), "D" if world.player_down(i) else ""])) if world.coop() else ""))
 	if world.time > 16 * 60:
 		world.end_run("timeout")
 

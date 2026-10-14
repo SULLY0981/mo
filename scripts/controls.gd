@@ -98,11 +98,13 @@ func apply() -> void:
 		for bt in btns:
 			var jb := InputEventJoypadButton.new()
 			jb.button_index = bt
+			jb.device = p1_pad()
 			InputMap.action_add_event(action, jb)
 		if FIXED_AXES.has(action):
 			var jm := InputEventJoypadMotion.new()
 			jm.axis = FIXED_AXES[action][0]
 			jm.axis_value = FIXED_AXES[action][1]
+			jm.device = p1_pad()
 			InputMap.action_add_event(action, jm)
 	device_changed.emit()
 
@@ -154,6 +156,49 @@ func pad_name(btn: int, style := "") -> String:
 func prompt(action: String) -> String:
 	## Short label for the binding on the device the player is using now.
 	return pad_name(pad_for(action)) if using_pad else key_name(key_for(action))
+
+
+# ---------------------------------------------------------------- co-op
+# Player 2 owns one joypad (p2_device). Player 1 keeps the keyboard and any other joypad.
+var p2_device := -1
+
+
+func set_p2(device: int) -> void:
+	p2_device = device
+	apply()
+
+
+func p1_pad() -> int:
+	## The joypad player 1 should use while player 2 holds p2_device: -1 = any, 99 = none.
+	if p2_device < 0:
+		return -1
+	for d in Input.get_connected_joypads():
+		if d != p2_device:
+			return d
+	return 99
+
+
+func pad_pressed(device: int, action: String) -> bool:
+	if Input.is_joy_button_pressed(device, pad_for(action)):
+		return true
+	for bt in FIXED_PAD.get(action, []):
+		if Input.is_joy_button_pressed(device, bt):
+			return true
+	return false
+
+
+func pad_vector(device: int) -> Vector2:
+	var v := Vector2(Input.get_joy_axis(device, JOY_AXIS_LEFT_X), Input.get_joy_axis(device, JOY_AXIS_LEFT_Y))
+	var dz := float(Save.data.settings.get("deadzone", 0.25))
+	if v.length() < dz:
+		v = Vector2.ZERO
+	else:
+		v = v.normalized() * clampf((v.length() - dz) / (1.0 - dz), 0.0, 1.0)
+	if Input.is_joy_button_pressed(device, pad_for("move_left")): v.x = -1
+	if Input.is_joy_button_pressed(device, pad_for("move_right")): v.x = 1
+	if Input.is_joy_button_pressed(device, pad_for("move_up")): v.y = -1
+	if Input.is_joy_button_pressed(device, pad_for("move_down")): v.y = 1
+	return v.limit_length(1.0)
 
 
 # ---------------------------------------------------------------- vibration

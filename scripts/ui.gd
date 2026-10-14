@@ -37,6 +37,11 @@ var banner_title: Label
 var banner_sub: Label
 var vignette: ColorRect
 var hp_bar: ProgressBar
+var hp_bars: Array = []
+var dash_bars: Array = []
+var bar_tags: Array = []
+var weapon_row2: HBoxContainer
+var passive_row2: HBoxContainer
 var dash_bar: ProgressBar
 var dash_hint: Label
 var fps_label: Label
@@ -358,6 +363,11 @@ func show_chars() -> void:
 	var back := _button(tr("Back"), func(): show_menu(), 220)
 	back.position = Vector2(110, 960)
 	s.add_child(back)
+	coop_label = _label("", 24, f_bold, Color("6ec6ff"), HORIZONTAL_ALIGNMENT_CENTER)
+	_place(coop_label, 0.5, 1, -520, -110, 1040, 34)
+	coop_label.label_settings.outline_size = 5
+	s.add_child(coop_label)
+	_refresh_coop()
 	_show("chars")
 	if first:
 		first.grab_focus.call_deferred()
@@ -949,7 +959,7 @@ func _settings_tab_step(d: int) -> void:
 	show_settings(settings_from, t, "tab_" + t)
 
 
-func _input(event: InputEvent) -> void:
+func _rebind_input(event: InputEvent) -> void:
 	## Captures the next key / button for rebinding before anything else sees it.
 	if capture.is_empty():
 		return
@@ -1032,6 +1042,10 @@ void fragment() {
 	hud.add_child(weapon_row)
 	passive_row = HBoxContainer.new(); passive_row.position = Vector2(20, 104); passive_row.add_theme_constant_override("separation", 6)
 	hud.add_child(passive_row)
+	weapon_row2 = HBoxContainer.new(); weapon_row2.position = Vector2(20, 170); weapon_row2.add_theme_constant_override("separation", 6)
+	hud.add_child(weapon_row2)
+	passive_row2 = HBoxContainer.new(); passive_row2.position = Vector2(54, 232); passive_row2.add_theme_constant_override("separation", 5)
+	hud.add_child(passive_row2)
 	boss_box = VBoxContainer.new()
 	_place(boss_box, 0.5, 1, -450, -190, 900, 160)
 	boss_box.alignment = BoxContainer.ALIGNMENT_END
@@ -1074,6 +1088,12 @@ void fragment() {
 	dash_bar.add_theme_stylebox_override("background", dbg)
 	dash_bar.add_theme_stylebox_override("fill", dfg)
 	hud.add_child(dash_bar)
+	hp_bars = [hp_bar]
+	dash_bars = [dash_bar]
+	var tag0 := _label("P1", 18, f_bold, AMBER, HORIZONTAL_ALIGNMENT_CENTER)
+	tag0.label_settings.outline_size = 5; tag0.size = Vector2(70, 20); tag0.visible = false
+	hud.add_child(tag0)
+	bar_tags = [tag0]
 	dash_hint = _label("", 22, f_bold, TEXT)
 	dash_hint.label_settings.outline_size = 5
 	_place(dash_hint, 0, 1, 24, -52, 500, 30)
@@ -1140,7 +1160,8 @@ func _process(_dt: float) -> void:
 		Input.mouse_mode = mm
 	if not hud.visible or world == null or not is_instance_valid(world) or world.mode != "run":
 		return
-	var P := world.P
+	var I0: Dictionary = world.player_info(0)
+	var P: Dictionary = I0.P
 	xp_bar.max_value = P.xp_next
 	xp_bar.value = P.xp
 	lvl_label.text = tr("LV %d") % P.level
@@ -1156,18 +1177,34 @@ func _process(_dt: float) -> void:
 	kills_label.text = "☠ %d" % world.kills
 	coins_label.text = "◆ %d" % world.coins
 	var sig := ""
-	for w in world.weapons:
-		sig += "%s%d%s," % [w.id, w.lvl, "*" if w.awake else ""]
-	for id in world.passive_order:
-		sig += "%s%d," % [id, world.passives[id]]
+	var infos := []
+	for i in world.players.size():
+		var inf: Dictionary = world.player_info(i)
+		infos.append(inf)
+		sig += "|"
+		for w in inf.weapons:
+			sig += "%s%d%s," % [w.id, w.lvl, "*" if w.awake else ""]
+		for id in inf.passive_order:
+			sig += "%s%d," % [id, inf.passives[id]]
 	if sig != build_sig:
 		build_sig = sig
-		for c in weapon_row.get_children(): c.queue_free()
-		for c in passive_row.get_children(): c.queue_free()
-		for w in world.weapons:
-			var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(58, 66); ic.setup(w.id, w.lvl, true, w.awake); weapon_row.add_child(ic)
-		for id in world.passive_order:
-			var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(44, 52); ic.setup(id, world.passives[id], true); passive_row.add_child(ic)
+		for row in [weapon_row, passive_row, weapon_row2, passive_row2]:
+			for c in row.get_children(): c.queue_free()
+		for i in mini(2, infos.size()):
+			var inf: Dictionary = infos[i]
+			var wr: HBoxContainer = weapon_row if i == 0 else weapon_row2
+			var pr: HBoxContainer = passive_row if i == 0 else passive_row2
+			if infos.size() > 1:
+				var tag := _label("P%d" % (i + 1), 24, f_bold, world.PLAYER_COLORS[i]); tag.custom_minimum_size.x = 34
+				wr.add_child(tag)
+			for w in inf.weapons:
+				var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(58, 66) if i == 0 else Vector2(46, 54); ic.setup(w.id, w.lvl, true, w.awake); wr.add_child(ic)
+			for id in inf.passive_order:
+				var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(44, 52) if i == 0 else Vector2(36, 44); ic.setup(id, inf.passives[id], true); pr.add_child(ic)
+		if infos.size() > 1:
+			passive_row.position.x = 54
+		weapon_row2.visible = infos.size() > 1
+		passive_row2.visible = infos.size() > 1
 	# boss bars (hidden while someone speaks; the dialogue box sits in the same spot)
 	boss_box.visible = not dlg_panel.visible
 	while boss_box.get_child_count() < world.bosses.size() * 2:
@@ -1186,19 +1223,37 @@ func _process(_dt: float) -> void:
 		(boss_box.get_child(i * 2) as Label).text = tr(b.bname)
 		var pb: ProgressBar = boss_box.get_child(i * 2 + 1)
 		pb.max_value = b.max_hp; pb.value = maxf(0, b.hp)
-	# player hp bar follows the player on screen
+	# health and dash bars follow each player on screen; a downed player's bar shows revive progress
 	var cam := world.cam
-	var sp := cam.unproject_position(Vector3(world.ppos.x, 0, world.ppos.y))
 	var vs := get_viewport().get_visible_rect().size
 	var scale := 1080.0 / vs.y if vs.y > 0 else 1.0
-	hp_bar.position = sp * scale + Vector2(-35, 22)
-	hp_bar.max_value = P.max_hp
-	hp_bar.value = P.hp
-	hp_bar.visible = world.dying <= 0
-	dash_bar.position = hp_bar.position + Vector2(0, 12)
-	dash_bar.value = 1.0 - clampf(world.dash_cd / maxf(0.01, P.dash_cd), 0, 1)
-	dash_bar.visible = hp_bar.visible
-	dash_bar.modulate.a = 1.0 if dash_bar.value >= 1.0 else 0.55
+	while hp_bars.size() < infos.size():
+		var hb: ProgressBar = hp_bar.duplicate(); hud.add_child(hb); hp_bars.append(hb)
+		var db: ProgressBar = dash_bar.duplicate(); hud.add_child(db); dash_bars.append(db)
+		var tg := _label("P%d" % hp_bars.size(), 18, f_bold, world.PLAYER_COLORS[(hp_bars.size() - 1) % 4], HORIZONTAL_ALIGNMENT_CENTER)
+		tg.label_settings.outline_size = 5; tg.size = Vector2(70, 20); hud.add_child(tg); bar_tags.append(tg)
+	for i in hp_bars.size():
+		var hb: ProgressBar = hp_bars[i]
+		var db: ProgressBar = dash_bars[i]
+		var tg: Label = bar_tags[i]
+		var on := i < infos.size() and (world.dying <= 0 or world.coop())
+		hb.visible = on; db.visible = on and not (i < infos.size() and infos[i].down); tg.visible = on and infos.size() > 1
+		if not on:
+			continue
+		var inf: Dictionary = infos[i]
+		var IP: Dictionary = inf.P
+		var sp := cam.unproject_position(Vector3(inf.pos.x, 0, inf.pos.y))
+		hb.position = sp * scale + Vector2(-35, 22)
+		if inf.down:
+			hb.max_value = 1.0; hb.value = inf.revive
+			hb.modulate = Color(1.0, 0.85, 0.3)
+		else:
+			hb.max_value = IP.max_hp; hb.value = IP.hp
+			hb.modulate = Color.WHITE
+		db.position = hb.position + Vector2(0, 12)
+		db.value = 1.0 - clampf(inf.dash_cd / maxf(0.01, IP.dash_cd), 0, 1)
+		db.modulate.a = 1.0 if db.value >= 1.0 else 0.55
+		tg.position = hb.position + Vector2(0, 18)
 	near_label.visible = world.shrine_prog > 0.0 and hp_bar.visible
 	if near_label.visible:
 		near_label.text = tr("Kindling the shrine... %d%%") % int(world.shrine_prog * 100)
@@ -1250,7 +1305,10 @@ func show_level() -> void:
 	_clear("level")
 	var s := _screen("level", true)
 	var v := _center_col(s, 26)
-	v.add_child(_title(tr("Level Up!"), 76))
+	var lt := tr("Level Up!")
+	if world.coop():
+		lt = tr("Player %d") % (world.ci + 1) + "  ·  " + lt
+	v.add_child(_title(lt, 76 if not world.coop() else 64, AMBER if world.ci == 0 else world.PLAYER_COLORS[world.ci % 4]))
 	var row := HBoxContainer.new(); row.add_theme_constant_override("separation", 22); row.alignment = BoxContainer.ALIGNMENT_CENTER
 	v.add_child(row)
 	card_lock = 0.6  # long enough that a dash/confirm press held from gameplay can't pick a card
@@ -1397,6 +1455,54 @@ func show_over(reason: String) -> void:
 
 
 # ================================================================= input
+var p2_char := "warden"
+var coop_label: Label
+
+
+func _unlocked_chars() -> Array:
+	return Data.CHAR_ORDER.filter(func(c): return Save.is_char_unlocked(c))
+
+
+func _refresh_coop() -> void:
+	if coop_label == null or not is_instance_valid(coop_label):
+		return
+	if Controls.p2_device < 0:
+		coop_label.text = tr("Co-op: press Start on a second controller to join")
+		coop_label.label_settings.font_color = MUTED
+	else:
+		coop_label.text = tr("Player 2: %s") % tr(Data.CHARS[p2_char].name) + "     " + tr("LB / RB: change Keeper") + "     " + tr("Back: leave")
+		coop_label.label_settings.font_color = Color("6ec6ff")
+
+
+func _input(event: InputEvent) -> void:
+	_rebind_input(event)
+	if not (event is InputEventJoypadButton and event.pressed) or not _visible("chars"):
+		return
+	var d: int = event.device
+	if Controls.p2_device < 0:
+		if event.button_index == JOY_BUTTON_START:
+			Controls.set_p2(d)
+			var opts := _unlocked_chars()
+			p2_char = opts[1 % opts.size()] if opts.size() > 1 else opts[0]
+			Sfx.play("buy")
+			Controls.rumble(0.3, 0.3, 0.2)
+			_refresh_coop()
+			get_viewport().set_input_as_handled()
+	elif d == Controls.p2_device:
+		var opts := _unlocked_chars()
+		var i := opts.find(p2_char)
+		if event.button_index in [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER]:
+			p2_char = opts[(i + (1 if event.button_index == JOY_BUTTON_RIGHT_SHOULDER else -1) + opts.size()) % opts.size()]
+			Sfx.play("click")
+			_refresh_coop()
+			get_viewport().set_input_as_handled()
+		elif event.button_index == JOY_BUTTON_BACK:
+			Controls.set_p2(-1)
+			Sfx.play("deny")
+			_refresh_coop()
+			get_viewport().set_input_as_handled()
+
+
 func _visible(name: String) -> bool:
 	return screens.has(name) and is_instance_valid(screens[name]) and screens[name].visible
 

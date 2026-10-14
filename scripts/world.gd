@@ -91,6 +91,7 @@ class Weapon:
 	var second := 0.0
 	var rot := 0.0
 	var awake := false
+	var owner := 0
 
 class Pickup:
 	var kind := ""
@@ -102,6 +103,7 @@ class Pickup:
 	var node: Node3D
 	var dead := false
 	var key := ""
+	var owner := 0
 
 class Bullet:
 	var pos := Vector2.ZERO
@@ -210,24 +212,10 @@ func _ready() -> void:
 	_build_map_assets()
 	_load_scenes()
 	_build_pools()
-	player_node = _spawn_model("player")
-	add_child(player_node)
-	lantern_node = player_node.find_child("Lantern", true, false)
-	lantern_light = OmniLight3D.new()
-	lantern_light.light_color = Color(1.0, 0.68, 0.38)
-	lantern_light.omni_range = 12.0
-	lantern_light.light_energy = 6.0
-	lantern_light.omni_attenuation = 0.85
-	lantern_light.shadow_enabled = quality >= 1
-	lantern_light.light_volumetric_fog_energy = 1.6
-	if lantern_node:
-		for mi in lantern_node.find_children("*", "MeshInstance3D", true, false) + ([lantern_node] if lantern_node is MeshInstance3D else []):
-			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		lantern_node.add_child(lantern_light)
-		lantern_light.position = Vector3(0, -0.32, 0)
-	else:
-		player_node.add_child(lantern_light)
-		lantern_light.position = Vector3(0.4, 1.4, -0.4)
+	players.append(PState.new())
+	ci = 0
+	_make_player_node(char_id)
+	_save_ctx()
 
 
 func _build_materials() -> void:
@@ -610,6 +598,7 @@ func start_run(c: String, n := 1) -> void:
 	recalc_stats()
 	P.hp = P.max_hp
 	add_weapon(Data.CHARS[c].weapon)
+	_save_ctx()
 	_update_chunks(true)
 	toast.emit(tr("Survive until dawn"), Color("ffd166"))
 	story.emit.call_deferred("start")
@@ -659,6 +648,7 @@ func recalc_stats() -> void:
 func add_weapon(id: String) -> void:
 	var w := Weapon.new()
 	w.id = id
+	w.owner = ci
 	weapons.append(w)
 
 
@@ -674,6 +664,7 @@ func _process(delta: float) -> void:
 
 
 func step(dt: float) -> void:
+	_use(0)  # a level-up may have left another player swapped in
 	if over:
 		return
 	if dying > 0:
@@ -687,41 +678,33 @@ func step(dt: float) -> void:
 		if victory_t <= 0:
 			victory_ready.emit()
 	time += dt
-	dash_cd -= dt
-	if dying <= 0:
-		var mv := Input.get_vector("move_left", "move_right", "move_up", "move_down")
-		if has_meta("bot"):
-			mv = _bot_move()
-		if dash_req:
-			dash_req = false
-			_try_dash(mv)
-		if dash_t > 0:
-			dash_t -= dt
-			ppos += dash_dir * Data.DASH_SPEED * dt
-			_dash_burn(dt)
-		else:
-			ppos += mv * P.speed * (1.25 if haste_t > 0 else 1.0) * dt
-		_resolve_props()
-		pmoving = mv.length() > 0.1
-		if pmoving:
-			pface = mv.normalized()
-	iframe -= dt
-	if P.hp > 0 and P.hp < P.max_hp:
-		P.hp = minf(P.max_hp, P.hp + P.regen * dt * heal_mult())
+	for i in players.size():
+		_use(i)
+		_player_step(dt)
+	_use(0)
 	if not won or endless:
 		_director(dt)
 	_build_grid()
 	fury_t -= dt
 	haste_t -= dt
 	if dying <= 0:
-		for w in weapons:
-			_weapon_update(w, dt * (1.3 if haste_t > 0 else 1.0) * (Data.AWAKEN_RATE if w.awake else 1.0))
+		for i in players.size():
+			_use(i)
+			if not down:
+				for w in weapons:
+					_weapon_update(w, dt * (1.3 if haste_t > 0 else 1.0) * (Data.AWAKEN_RATE if w.awake else 1.0))
+		_use(0)
 	_update_enemies(dt)
 	_update_projs(dt)
 	_update_bullets(dt)
-	_update_gems(dt)
-	_update_pickups(dt)
+	for i in players.size():
+		_use(i)
+		if not down:
+			_update_gems(dt)
+			_update_pickups(dt)
+	_use(0)
 	_update_shrines(dt)
+	_update_revives(dt)
 	_check_region(dt)
 	_update_atmosphere(dt)
 	_cleanup()
@@ -729,13 +712,251 @@ func step(dt: float) -> void:
 	if ach_t <= 0:
 		ach_t = 1.0
 		check_achievements()
-	if pending_levels > 0 and dying <= 0 and not over:
-		_offer_level()
+	if dying <= 0 and not over:
+		for i in players.size():
+			_use(i)
+			if pending_levels > 0 and not down:
+				_offer_level()  # leaves this player swapped in while their level-up screen is open
+				return
+		_use(0)
+
+
+# ================================================================= players (co-op)
+# Each player's state lives in a PState. The game code works on "the current player" through the
+# plain variables above (ppos, P, weapons, ...); _use(i) swaps player i into them.
+class PState:
+	var ppos := Vector2.ZERO
+	var pface := Vector2(0, 1)
+	var pmoving := false
+	var iframe := 0.0
+	var P := {}
+	var weapons: Array[Weapon] = []
+	var passives := {}
+	var passive_order: Array[String] = []
+	var dash_t := 0.0
+	var dash_cd := 0.0
+	var dash_dir := Vector2.ZERO
+	var dash_req := false
+	var dash_burn_t := 0.0
+	var player_node: Node3D
+	var lantern_node: Node3D
+	var lantern_light: OmniLight3D
+	var char_id := "keeper"
+	var pending_levels := 0
+	var choices: Array = []
+	var down := false
+	var revive := 0.0
+	var device := -1      # -1 = keyboard and player 1's controller; otherwise a joypad id
+	var dash_held := false
+
+const LEASH := 12.0       # co-op players can't drift further apart than this
+const REVIVE_TIME := 3.0
+const PLAYER_COLORS := [Color("ffb347"), Color("6ec6ff"), Color("9dff5c"), Color("ff6bd6")]
+
+var players: Array[PState] = []
+var ci := 0
+var down := false
+var revive := 0.0
+
+
+func _save_ctx() -> void:
+	var s := players[ci]
+	s.ppos = ppos; s.pface = pface; s.pmoving = pmoving; s.iframe = iframe; s.P = P
+	s.weapons = weapons; s.passives = passives; s.passive_order = passive_order
+	s.dash_t = dash_t; s.dash_cd = dash_cd; s.dash_dir = dash_dir; s.dash_req = dash_req; s.dash_burn_t = dash_burn_t
+	s.player_node = player_node; s.lantern_node = lantern_node; s.lantern_light = lantern_light
+	s.char_id = char_id; s.pending_levels = pending_levels; s.choices = choices; s.down = down; s.revive = revive
+
+
+func _load_ctx() -> void:
+	var s := players[ci]
+	ppos = s.ppos; pface = s.pface; pmoving = s.pmoving; iframe = s.iframe; P = s.P
+	weapons = s.weapons; passives = s.passives; passive_order = s.passive_order
+	dash_t = s.dash_t; dash_cd = s.dash_cd; dash_dir = s.dash_dir; dash_req = s.dash_req; dash_burn_t = s.dash_burn_t
+	player_node = s.player_node; lantern_node = s.lantern_node; lantern_light = s.lantern_light
+	char_id = s.char_id; pending_levels = s.pending_levels; choices = s.choices; down = s.down; revive = s.revive
+
+
+func _use(i: int) -> void:
+	if i == ci or i >= players.size():
+		return
+	_save_ctx()
+	ci = i
+	_load_ctx()
+
+
+func coop() -> bool:
+	return players.size() > 1
+
+
+func player_pos(i: int) -> Vector2:
+	return ppos if i == ci else players[i].ppos
+
+
+func player_down(i: int) -> bool:
+	return down if i == ci else players[i].down
+
+
+func player_info(i: int) -> Dictionary:
+	## Live values for the HUD, whichever player is currently swapped in.
+	var s := players[i]
+	var live := i == ci
+	return {"pos": ppos if live else s.ppos, "P": s.P if not live else P, "dash_cd": dash_cd if live else s.dash_cd,
+		"down": down if live else s.down, "revive": revive if live else s.revive, "iframe": iframe if live else s.iframe,
+		"weapons": weapons if live else s.weapons, "passives": passives if live else s.passives,
+		"passive_order": passive_order if live else s.passive_order, "char": char_id if live else s.char_id}
+
+
+func _nearest_player(p: Vector2) -> int:
+	## Index of the nearest player still standing (or player 0 if everyone is down).
+	var best := 0
+	var bd := INF
+	for i in players.size():
+		if player_down(i):
+			continue
+		var d := p.distance_squared_to(player_pos(i))
+		if d < bd:
+			bd = d
+			best = i
+	return best
+
+
+func _hurt_player(i: int, dmg: float, src: String) -> void:
+	var was := ci
+	_use(i)
+	damage_player(dmg, src)
+	_use(was)
+
+
+func _make_player_node(c: String) -> void:
+	## Builds the current player's model and lantern light.
+	player_node = _spawn_model("player")
+	add_child(player_node)
+	lantern_node = player_node.find_child("Lantern", true, false)
+	lantern_light = OmniLight3D.new()
+	lantern_light.light_color = Color(1.0, 0.68, 0.38)
+	lantern_light.omni_range = 12.0
+	lantern_light.light_energy = 6.0
+	lantern_light.omni_attenuation = 0.85
+	lantern_light.shadow_enabled = quality >= 1 and ci == 0
+	lantern_light.light_volumetric_fog_energy = 1.6
+	if lantern_node:
+		for mi in lantern_node.find_children("*", "MeshInstance3D", true, false) + ([lantern_node] if lantern_node is MeshInstance3D else []):
+			(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		lantern_node.add_child(lantern_light)
+		lantern_light.position = Vector3(0, -0.32, 0)
+	else:
+		player_node.add_child(lantern_light)
+		lantern_light.position = Vector3(0.4, 1.4, -0.4)
+	_tint_player(c)
+
+
+func add_coop_player(c: String, device: int) -> void:
+	## Adds another Keeper beside player 1 with its own build.
+	_use(0)
+	var start := ppos + Vector2(1.6 * players.size(), 0.8)
+	_save_ctx()
+	players.append(PState.new())
+	ci = players.size() - 1
+	_load_ctx()
+	players[ci].device = device
+	char_id = c
+	ppos = start
+	weapons = []
+	passives = {}
+	passive_order = []
+	_make_player_node(c)
+	P = {"level": 1, "xp": 0.0, "xp_next": xp_for(1), "revives": Save.shop_level("revive"), "rerolls": Save.shop_level("reroll"), "max_hp": 0.0, "hp": 0.0}
+	recalc_stats()
+	P.hp = P.max_hp
+	add_weapon(Data.CHARS[c].weapon)
+	_save_ctx()
+	_use(0)
+
+
+func _player_input() -> Vector2:
+	if has_meta("bot"):
+		return _bot_move()
+	var dev := players[ci].device
+	if ci == 0 or dev < 0:
+		return Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var held: bool = Controls.pad_pressed(dev, "dash")
+	if held and not players[ci].dash_held:
+		dash_req = true
+	players[ci].dash_held = held
+	return Controls.pad_vector(dev)
+
+
+func _player_step(dt: float) -> void:
+	dash_cd -= dt
+	iframe -= dt
+	if down or dying > 0:
+		pmoving = false
+		return
+	var mv := _player_input()
+	if dash_req:
+		dash_req = false
+		_try_dash(mv)
+	if dash_t > 0:
+		dash_t -= dt
+		ppos += dash_dir * Data.DASH_SPEED * dt
+		_dash_burn(dt)
+	else:
+		ppos += mv * P.speed * (1.25 if haste_t > 0 else 1.0) * dt
+	_resolve_props()
+	if coop():
+		for j in players.size():
+			if j != ci and not player_down(j):
+				var o := player_pos(j)
+				if ppos.distance_to(o) > LEASH:
+					ppos = o + (ppos - o).normalized() * LEASH
+	pmoving = mv.length() > 0.1
+	if pmoving:
+		pface = mv.normalized()
+	if P.hp > 0 and P.hp < P.max_hp:
+		P.hp = minf(P.max_hp, P.hp + P.regen * dt * heal_mult())
+
+
+func _update_revives(dt: float) -> void:
+	## A downed player gets back up after a teammate stands beside them for a few seconds.
+	if not coop():
+		return
+	for i in players.size():
+		if not player_down(i):
+			continue
+		var helped := false
+		for j in players.size():
+			if j != i and not player_down(j) and player_pos(j).distance_to(player_pos(i)) < 2.4:
+				helped = true
+		var was := ci
+		_use(i)
+		revive = clampf(revive + (dt / REVIVE_TIME if helped else -dt * 0.5), 0.0, 1.0)
+		if helped and fmod(time, 0.5) < dt:
+			fx_ring(ppos, 2.4, PLAYER_COLORS[i % 4])
+		if revive >= 1.0:
+			down = false
+			revive = 0.0
+			P.hp = P.max_hp * 0.4
+			iframe = 2.0
+			burst(ppos, 1.2, PLAYER_COLORS[i % 4], 2.0)
+			Sfx.play("revive")
+			toast.emit(tr("Player %d is back!") % (i + 1), PLAYER_COLORS[i % 4])
+		_use(was)
+
+
+func _all_down() -> bool:
+	for i in players.size():
+		if not player_down(i):
+			return false
+	return true
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if mode == "run" and event.is_action_pressed("dash") and not event.is_echo():
-		dash_req = true
+		if ci == 0:
+			dash_req = true
+		else:
+			players[0].dash_req = true
 
 
 func _try_dash(mv: Vector2) -> void:
@@ -974,10 +1195,13 @@ func _director(dt: float) -> void:
 func hurt_enemy(e: Enemy, base: float, kdir: Vector2, kb: float, w: Weapon) -> void:
 	if e.dead:
 		return
-	var dmg: float = base * P.might * (1.5 if fury_t > 0 else 1.0) * (Data.AWAKEN_DMG if w and w.awake else 1.0)
-	if P.light_bonus > 1.0 and e.pos.distance_squared_to(ppos) < pow(P.light * 0.6, 2):
-		dmg *= P.light_bonus
-	var crit: bool = randf() < 0.05 * P.luck
+	# Use the stats of whoever owns the weapon (matters in co-op, where shared phases run as player 1).
+	var oi: int = w.owner if w and w.owner < players.size() else ci
+	var PP: Dictionary = P if oi == ci else players[oi].P
+	var dmg: float = base * PP.might * (1.5 if fury_t > 0 else 1.0) * (Data.AWAKEN_DMG if w and w.awake else 1.0)
+	if PP.light_bonus > 1.0 and e.pos.distance_squared_to(player_pos(oi)) < pow(PP.light * 0.6, 2):
+		dmg *= PP.light_bonus
+	var crit: bool = randf() < 0.05 * PP.luck
 	if crit:
 		dmg *= 2.0
 	dmg *= randf_range(0.92, 1.08)
@@ -1052,7 +1276,7 @@ func kill_enemy(e: Enemy) -> void:
 
 
 func damage_player(raw: float, src := "?") -> void:
-	if iframe > 0 or over or dying > 0 or (won and victory_t > 0):
+	if iframe > 0 or over or dying > 0 or down or (won and victory_t > 0):
 		return
 	var d := maxf(1.0, raw - P.armor)
 	if has_meta("bot"):
@@ -1060,6 +1284,8 @@ func damage_player(raw: float, src := "?") -> void:
 		lg[src] = lg.get(src, 0.0) + d
 		set_meta("dmglog", lg)
 	P.hp -= d
+	if has_meta("god"):
+		P.hp = maxf(P.hp, 1.0)  # test mode only
 	iframe = 0.6
 	hurt = 1.0
 	took_damage = true
@@ -1074,6 +1300,17 @@ func damage_player(raw: float, src := "?") -> void:
 			nuke(true)
 			banner.emit(tr("Second Flame").to_upper(), tr("You rise again"), Color("ffb347"))
 			Sfx.play("revive")
+		elif coop():
+			P.hp = 0
+			down = true
+			revive = 0.0
+			Sfx.play("death")
+			Controls.rumble(0.8, 1.0, 0.6)
+			burst(ppos, 1.2, PLAYER_COLORS[ci % 4], 2.0)
+			toast.emit(tr("Player %d is down! Stand beside them to revive.") % (ci + 1), PLAYER_COLORS[ci % 4])
+			_save_ctx()
+			if _all_down():
+				dying = 1.6
 		else:
 			P.hp = 0
 			dying = 1.6
@@ -1285,7 +1522,7 @@ func _update_projs(dt: float) -> void:
 				if p.speed >= 0:
 					p.vel = p.vel.normalized() * p.speed
 				else:
-					var d := ppos - p.pos
+					var d := (player_pos(p.w.owner) if p.w else ppos) - p.pos
 					p.vel = d.normalized() * minf(22.0, -p.speed + 4.5)
 					if d.length() < 0.7:
 						p.dead = true
@@ -1338,7 +1575,8 @@ func _update_enemies(dt: float) -> void:
 			e.flash_cd -= dt
 		if e.slow > 0:
 			e.slow -= dt
-		var to := ppos - e.pos
+		var tgt := _nearest_player(e.pos)
+		var to := player_pos(tgt) - e.pos
 		var dist := maxf(0.001, to.length())
 		var d := to / dist
 		var sp := e.speed * (0.5 if e.slow > 0 and not e.boss else 1.0)
@@ -1389,7 +1627,7 @@ func _update_enemies(dt: float) -> void:
 			e.pos = _spawn_point(0.7)
 			burst(e.pos, 1.0, Color(Data.BOSSES[e.type].color), 2.0)
 		if dist < e.r + 0.4:
-			damage_player(e.dmg, e.type + ("_dash" if e.state == "dash" else ""))
+			_hurt_player(tgt, e.dmg, e.type + ("_dash" if e.state == "dash" else ""))
 
 
 func _separate(e: Enemy) -> void:
@@ -1487,10 +1725,13 @@ func _update_bullets(dt: float) -> void:
 	for b in bullets:
 		b.life -= dt
 		b.pos += b.vel * dt
-		if b.life > 0 and b.pos.distance_squared_to(ppos) < 0.36:
-			damage_player(b.dmg, "bullet")
-			b.life = 0
-			burst(b.pos, 0.4, Color("ff4dd2"), 0.4)
+		if b.life > 0:
+			for i in players.size():
+				if not player_down(i) and b.pos.distance_squared_to(player_pos(i)) < 0.36:
+					_hurt_player(i, b.dmg, "bullet")
+					b.life = 0
+					burst(b.pos, 0.4, Color("ff4dd2"), 0.4)
+					break
 		if b.life > 0:
 			keep.append(b)
 		else:
@@ -1532,8 +1773,8 @@ func _update_gems(dt: float) -> void:
 	for g in gems:
 		var d2: float = g[0].distance_squared_to(ppos)
 		if not g[2] and d2 < m2:
-			g[2] = true
-		if g[2]:
+			g[2] = ci + 1
+		if g[2] and int(g[2]) == ci + 1:
 			g[3] = minf(26.0, g[3] + 40.0 * dt)
 			var dd := sqrt(d2)
 			if dd < 0.6:
@@ -1551,7 +1792,7 @@ func _update_pickups(dt: float) -> void:
 	for p in pickups:
 		p.t += dt
 		var d2 := p.pos.distance_squared_to(ppos)
-		if d2 > far2 and p.kind != "chest":
+		if ci == 0 and p.kind != "chest" and p.pos.distance_squared_to(player_pos(_nearest_player(p.pos))) > far2:
 			# Left far behind: bank coins, drop the rest, so long Endless runs don't pile up nodes.
 			p.dead = true
 			if p.kind == "coin":
@@ -1566,7 +1807,8 @@ func _update_pickups(dt: float) -> void:
 			continue
 		if not p.mag and d2 < m2:
 			p.mag = true
-		if p.mag:
+			p.owner = ci
+		if p.mag and p.owner == ci:
 			p.sp = minf(24.0, p.sp + 36.0 * dt)
 			var dd := sqrt(d2)
 			p.pos += (ppos - p.pos) / maxf(dd, 0.001) * minf(p.sp * dt, dd)
@@ -2128,7 +2370,7 @@ func _update_shrines(dt: float) -> void:
 	for s in shrines:
 		if s.lit:
 			continue
-		var near: bool = s.pos.distance_squared_to(ppos) < 2.8 * 2.8 and dying <= 0
+		var near: bool = s.pos.distance_squared_to(player_pos(_nearest_player(s.pos))) < 2.8 * 2.8 and dying <= 0 and not _all_down()
 		if near:
 			s.prog = minf(1.0, s.prog + dt / Data.SHRINE_TIME)
 			shrine_prog = maxf(shrine_prog, s.prog)
@@ -2166,11 +2408,18 @@ func _light_shrine(s: Dictionary) -> void:
 	Sfx.play("revive")
 	Controls.rumble(0.3, 0.3, 0.3)
 	var b: Dictionary = Data.BLESSINGS.pick_random()
+	var was := ci
+	for i in players.size():
+		_use(i)
+		if down:
+			continue
+		match b.id:
+			"warmth":
+				P.hp = P.max_hp
+			"insight":
+				add_xp(P.xp_next - P.xp)
+	_use(was)
 	match b.id:
-		"warmth":
-			P.hp = P.max_hp
-		"insight":
-			add_xp(P.xp_next - P.xp)
 		"fury":
 			fury_t = 30.0
 		"haste":
@@ -2195,8 +2444,9 @@ func _gourd_blast(e: Enemy) -> void:
 	burst(e.pos, 0.8, Color("ff8a2a"), 1.6)
 	Sfx.play("explode")
 	add_shake(0.25)
-	if e.pos.distance_to(ppos) < R:
-		damage_player(e.dmg, "gourd_blast")
+	for i in players.size():
+		if not player_down(i) and e.pos.distance_to(player_pos(i)) < R:
+			_hurt_player(i, e.dmg, "gourd_blast")
 	for o in query(e.pos, R):
 		if o != e and not o.boss and not o.dead:
 			hurt_enemy(o, 30.0, (o.pos - e.pos).normalized(), 6.0, null)
@@ -2360,26 +2610,39 @@ func _damage_number(e: Enemy, dmg: float, crit: bool) -> void:
 # ================================================================= visuals
 func sync_visuals(dt: float) -> void:
 	_update_chunks()
-	# player
+	# players
 	var t := time
-	var target_rot := atan2(-pface.x, -pface.y)
-	player_node.rotation.y = lerp_angle(player_node.rotation.y, target_rot, minf(1.0, dt * 12))
-	var bob := absf(sin(t * 9.0)) * 0.06 if pmoving else sin(t * 2.0) * 0.015
-	player_node.position = Vector3(ppos.x, bob, ppos.y)
-	player_node.rotation.x = lerpf(player_node.rotation.x, -0.08 if pmoving else 0.0, dt * 8)
-	player_node.visible = dying <= 0 and not (iframe > 0 and int(t * 20) % 2 == 0)
-	if lantern_node:
-		lantern_node.rotation.x = sin(t * (7.0 if pmoving else 2.0)) * (0.25 if pmoving else 0.06)
-		lantern_node.rotation.z = sin(t * 3.1) * 0.05
-	var flick := 1.0 + sin(t * 9.0) * 0.04 + sin(t * 23.0) * 0.03
-	lantern_light.light_energy = (6.0 if not won or endless else 3.0) * flick
-	# camera
-	cam_target = cam_target.lerp(Vector3(ppos.x, 0, ppos.y), minf(1.0, dt * 6))
+	var was := ci
+	var mid := Vector2.ZERO
+	var spread := 0.0
+	for i in players.size():
+		_use(i)
+		var target_rot := atan2(-pface.x, -pface.y)
+		player_node.rotation.y = lerp_angle(player_node.rotation.y, target_rot, minf(1.0, dt * 12))
+		var bob := absf(sin(t * 9.0)) * 0.06 if pmoving else sin(t * 2.0) * 0.015
+		player_node.position = Vector3(ppos.x, bob, ppos.y)
+		# A downed player lies on their side until revived.
+		var lean := -1.3 if down else (-0.08 if pmoving else 0.0)
+		player_node.rotation.x = lerpf(player_node.rotation.x, lean, dt * 8)
+		player_node.visible = (dying <= 0 or coop()) and not (iframe > 0 and not down and int(t * 20) % 2 == 0)
+		if lantern_node:
+			lantern_node.rotation.x = sin(t * (7.0 if pmoving else 2.0)) * (0.25 if pmoving else 0.06)
+			lantern_node.rotation.z = sin(t * 3.1) * 0.05
+		var flick := 1.0 + sin(t * 9.0) * 0.04 + sin(t * 23.0) * 0.03
+		lantern_light.light_energy = (6.0 if not won or endless else 3.0) * flick * (0.35 if down else 1.0)
+		mid += ppos
+	_use(was)
+	mid /= players.size()
+	for i in players.size():
+		spread = maxf(spread, player_pos(i).distance_to(mid))
+	# camera: frames every player, pulling back as they spread out
+	cam_target = cam_target.lerp(Vector3(mid.x, 0, mid.y), minf(1.0, dt * 6))
 	var shk := Vector3.ZERO
 	if shake > 0:
 		shk = Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * shake * 0.4
 		shake = maxf(0, shake - dt * 2.5)
-	cam.position = cam_target + Vector3(0, 13, 9.5) + shk
+	var zoom := clampf(spread / LEASH, 0.0, 1.0) if coop() else 0.0
+	cam.position = cam_target + Vector3(0, 13, 9.5) * (1.0 + zoom * 0.7) + shk
 	cam.look_at(cam_target + Vector3(0, 0.5, 0) + shk * 0.5)
 	ground.position = Vector3(snappedf(ppos.x, 10), 0, snappedf(ppos.y, 10))
 	hurt = maxf(0, hurt - dt * 2.2)
