@@ -25,9 +25,10 @@ func _defaults() -> Dictionary:
 		"best": {"time": 0.0, "kills": 0, "level": 0},
 		"totals": {"kills": 0, "runs": 0, "bosses": 0, "wins": 0, "time": 0.0, "shrines": 0, "pumpkins": 0},
 		"memories": [], "seen_intro": false, "seen_ending": false, "night": 1, "nights_won": 0,
+		"seen_dialogue": [], "seen_true_ending": false,
 		"settings": {"sfx": 0.8, "music": 0.6, "shake": true, "dmg_nums": true, "fullscreen": true, "quality": 2, "vsync": true, "language": "auto",
 			"vibration": true, "vibration_strength": 0.8, "deadzone": 0.25, "prompts": "auto", "binds": {},
-			"reduce_flash": false, "autopause": true, "show_fps": false},
+			"reduce_flash": false, "autopause": true, "show_fps": false, "dialogue": true},
 		"last_char": "keeper",
 	}
 

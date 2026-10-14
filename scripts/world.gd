@@ -9,6 +9,7 @@ signal banner(title: String, sub: String, color: Color)
 signal toast(text: String, color: Color)
 signal victory_ready
 signal boss_changed(active: bool)
+signal story(id: String)
 
 const CELL := 2.0
 const SPAWN_R := 23.0
@@ -611,6 +612,7 @@ func start_run(c: String, n := 1) -> void:
 	add_weapon(Data.CHARS[c].weapon)
 	_update_chunks(true)
 	toast.emit(tr("Survive until dawn"), Color("ffd166"))
+	story.emit.call_deferred("start")
 
 
 func _tint_player(c: String) -> void:
@@ -909,6 +911,7 @@ func spawn_boss(type: String, mult: float) -> void:
 	bosses.append(e)
 	boss_changed.emit(true)
 	banner.emit(tr(B.name).to_upper(), tr("has awakened"), Color(B.color))
+	story.emit("boss_" + type + ("2" if mult > 1.0 and not endless else ""))
 	Controls.rumble(0.3, 0.7, 0.6)
 	Sfx.play("boss_roar")
 	add_shake(0.6)
@@ -1027,6 +1030,7 @@ func kill_enemy(e: Enemy) -> void:
 					o.dead = true
 		else:
 			banner.emit(tr("Boss Defeated").to_upper(), tr(e.bname), Color("ffd166"))
+		story.emit("defeat_" + e.type)
 		return
 	Sfx.play("kill")
 	drop_gem(e.pos, e.xp)
@@ -2156,6 +2160,7 @@ func _light_shrine(s: Dictionary) -> void:
 	if t.shrines >= 25:
 		Save.unlock("ACH_SHRINES_25")
 	aoe(s.pos, 7.0, 200.0, 10.0, Color("ffd166"), null)
+	story.emit("shrine")
 	burst(s.pos, 2.2, Color("ffd166"), 2.5)
 	fx_light(s.pos, Color("ffd166"), 10.0, 0.9)
 	Sfx.play("revive")

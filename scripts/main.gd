@@ -39,6 +39,9 @@ func _ready() -> void:
 		if a.begins_with("--mapshots="):
 			_map_shots(a.substr(11))
 			return
+		if a.begins_with("--dlgshots="):
+			_dialogue_shots(a.substr(11))
+			return
 	if autotest:
 		Save.data = Save._defaults()
 		var c := "keeper"
@@ -90,9 +93,33 @@ func start_run(c: String) -> void:
 	world.banner.connect(ui.banner)
 	world.toast.connect(ui.toast)
 	world.boss_changed.connect(func(active): Sfx.music("boss" if active else "battle"))
+	world.story.connect(_on_story)
 	ui.show_hud(world)  # before start_run, which emits the opening toast
 	world.start_run(c, mini(int(Save.data.get("night", 1)), int(Save.data.get("nights_won", 0)) + 1))
 	Sfx.music("battle")
+
+
+func _on_story(id: String) -> void:
+	## Picks a full conversation (first time, pauses) or a one-line remark (never pauses).
+	if autotest or shots_dir != "":
+		return
+	if id == "start":
+		var lines: Array = Data.KEEPER_LINES.get(world.char_id, [])
+		if not lines.is_empty():
+			ui.bark("self", lines.pick_random())
+		return
+	var seen: Array = Save.data.seen_dialogue
+	if Data.DIALOGUE.has(id) and not seen.has(id) and Save.setting("dialogue"):
+		seen.append(id)
+		Save.persist()
+		get_tree().paused = true
+		ui.dialogue(Data.DIALOGUE[id], func():
+			if ui.current == "":
+				get_tree().paused = false)
+		return
+	if Data.BARKS.has(id):
+		var b: Array = Data.BARKS[id].pick_random()
+		ui.bark(b[0], b[1])
 
 
 func _on_level_up() -> void:
@@ -100,6 +127,9 @@ func _on_level_up() -> void:
 		while world.pending_levels > 0:
 			if not world.choose(_bot_pick()):
 				break
+		return
+	if ui.dialogue_active:
+		ui.after_dialogue.append(_on_level_up)  # don't stack a level-up on top of a conversation
 		return
 	get_tree().paused = true
 	Sfx.play("levelup")
@@ -122,7 +152,12 @@ func _on_victory() -> void:
 		world.end_run("victory")
 		return
 	get_tree().paused = true
-	if not Save.data.get("seen_ending", false):
+	if world.night >= Data.NIGHTS.size() and not Save.data.get("seen_true_ending", false):
+		Save.data.seen_true_ending = true
+		Save.data.seen_ending = true
+		Save.persist()
+		ui.show_story(Data.ENDING_TRUE, "The Longest Night", func(): ui.show_victory())
+	elif not Save.data.get("seen_ending", false):
 		Save.data.seen_ending = true
 		Save.persist()
 		ui.show_story(Data.ENDING, "Dawn Breaks", func(): ui.show_victory())
@@ -317,6 +352,30 @@ func _map_shots(dir: String) -> void:
 			world.spawn_pickup("pumpkin", spot + Vector2(-2.2, 1.0))
 		await get_tree().create_timer(2.5).timeout
 		await _shot(dir, "region_%d" % reg)
+	get_tree().quit()
+
+
+func _dialogue_shots(dir: String) -> void:
+	Save.data = Save._defaults()
+	Save.data.settings.autopause = false
+	for ach in Data.ACHIEVEMENTS:
+		Save.data.ach[ach.id] = 1
+	start_run("reaper")
+	await get_tree().create_timer(1.5).timeout
+	get_tree().paused = true
+	ui.dialogue(Data.DIALOGUE.boss_king)
+	await get_tree().create_timer(1.5).timeout
+	await _shot(dir, "dlg_king")
+	ui._dialogue_advance()
+	await get_tree().create_timer(1.5).timeout
+	await _shot(dir, "dlg_self")
+	while ui.dialogue_active:
+		ui.dlg_text.visible_ratio = 1.0
+		ui._dialogue_advance()
+	get_tree().paused = false
+	ui.bark("spirit", Data.BARKS.shrine[0][1])
+	await get_tree().create_timer(1.5).timeout
+	await _shot(dir, "dlg_spirit")
 	get_tree().quit()
 
 

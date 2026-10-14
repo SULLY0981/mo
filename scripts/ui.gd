@@ -65,6 +65,7 @@ func _ready() -> void:
 	root.theme = th
 	add_child(root)
 	_build_hud()
+	_build_dialogue()
 	_build_ach_toast()
 
 
@@ -467,6 +468,183 @@ func show_ach() -> void:
 	_show("ach")
 
 
+# ================================================================= dialogue
+var dlg_panel: PanelContainer
+var dlg_portrait: TextureRect
+var dlg_name: Label
+var dlg_text: Label
+var dlg_hint: Label
+var dlg_lines: Array = []
+var dlg_i := 0
+var dlg_then := Callable()
+var dlg_bark_t := 0.0
+var dialogue_active := false
+var after_dialogue: Array = []
+var portraits := {}  # speaker key -> SubViewport
+
+
+func _build_dialogue() -> void:
+	dlg_panel = PanelContainer.new()
+	dlg_panel.add_theme_stylebox_override("panel", _sb(Color(0.05, 0.035, 0.08, 0.94), Color("8a6a2a"), 2, 16, Color(0, 0, 0, 0.5), 18))
+	_place(dlg_panel, 0.5, 1, -640, -290, 1280, 250)
+	dlg_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dlg_panel.visible = false
+	root.add_child(dlg_panel)
+	var h := HBoxContainer.new(); h.add_theme_constant_override("separation", 24); dlg_panel.add_child(h)
+	dlg_portrait = TextureRect.new()
+	dlg_portrait.custom_minimum_size = Vector2(210, 210)
+	dlg_portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	dlg_portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	h.add_child(dlg_portrait)
+	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 8); v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(v)
+	dlg_name = _label("", 32, f_head, AMBER); v.add_child(dlg_name)
+	dlg_text = _label("", 30, f_body, TEXT)
+	dlg_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dlg_text.custom_minimum_size = Vector2(960, 120)
+	dlg_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(dlg_text)
+	dlg_hint = _label("", 20, f_body, MUTED, HORIZONTAL_ALIGNMENT_RIGHT); v.add_child(dlg_hint)
+
+
+func _speaker(key: String) -> Array:
+	## [display name, colour, model, tint] for a speaker key.
+	if key == "self":
+		var cid: String = world.char_id if world and is_instance_valid(world) else "keeper"
+		return [tr(Data.CHARS[cid].name), AMBER, "player", Color(Data.CHARS[cid].color)]
+	if Data.BOSSES.has(key):
+		return [tr(Data.BOSSES[key].name), Color(Data.BOSSES[key].color), key, null]
+	var sp: Dictionary = Data.SPEAKERS.get(key, {"name": key, "color": "ffffff"})
+	return [tr(sp.name), Color(sp.color), "player", Color(0.75, 0.88, 1.0)]
+
+
+func _portrait(key: String) -> Texture2D:
+	## Renders the speaker's 3D model into a small viewport, framed on its head and shoulders.
+	var info := _speaker(key)
+	var pkey := key + (str(info[3]) if info[3] != null else "")
+	if portraits.has(pkey):
+		var cached: SubViewport = portraits[pkey]
+		cached.render_target_update_mode = SubViewport.UPDATE_ONCE
+		return cached.get_texture()
+	var vp := SubViewport.new()
+	vp.size = Vector2i(320, 320)
+	vp.transparent_bg = true
+	vp.own_world_3d = true
+	vp.msaa_3d = Viewport.MSAA_4X
+	add_child(vp)
+	var model: Node3D = load("res://assets/models/%s.glb" % info[2]).instantiate()
+	vp.add_child(model)
+	var box := AABB()
+	var first := true
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m: MeshInstance3D = mi
+		var b: AABB = m.global_transform * m.get_aabb() if m.is_inside_tree() else m.get_aabb()
+		box = b if first else box.merge(b)
+		first = false
+		if info[3] != null:
+			for s in m.mesh.get_surface_count():
+				var mat := m.mesh.surface_get_material(s)
+				if mat and mat.resource_name == "Cloak":
+					var d: StandardMaterial3D = mat.duplicate()
+					d.albedo_color = info[3]
+					m.set_surface_override_material(s, d)
+	var top := box.end.y
+	var hgt := box.size.y
+	var cam := Camera3D.new()
+	cam.fov = 30.0
+	var focus := Vector3(box.get_center().x, top - hgt * 0.32, box.get_center().z)
+	cam.position = focus + Vector3(0, hgt * 0.08, -hgt * 1.25)
+	vp.add_child(cam)
+	cam.look_at(focus)
+	var key_light := DirectionalLight3D.new()
+	key_light.rotation_degrees = Vector3(-30, 160, 0)
+	key_light.light_energy = 1.4
+	vp.add_child(key_light)
+	var rim := OmniLight3D.new()
+	rim.light_color = info[1]
+	rim.light_energy = 3.0
+	rim.omni_range = hgt * 3.0
+	rim.position = focus + Vector3(hgt * 0.6, hgt * 0.3, hgt * 0.6)
+	vp.add_child(rim)
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CLEAR_COLOR
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.5, 0.45, 0.65)
+	env.ambient_light_energy = 0.6
+	var we := WorldEnvironment.new(); we.environment = env
+	vp.add_child(we)
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	portraits[pkey] = vp
+	return vp.get_texture()
+
+
+func _show_line(line: Array) -> void:
+	var info := _speaker(line[0])
+	dlg_name.text = info[0]
+	dlg_name.label_settings.font_color = info[1]
+	dlg_text.text = tr(line[1])
+	dlg_text.visible_ratio = 0.0
+	dlg_portrait.texture = _portrait(line[0])
+	dlg_panel.visible = true
+
+
+func dialogue(lines: Array, then := Callable()) -> void:
+	## A conversation that holds the game until the player reads it.
+	dlg_lines = lines
+	dlg_i = 0
+	dlg_then = then
+	dlg_bark_t = 0.0
+	dialogue_active = true
+	current = "dialogue"
+	dlg_hint.text = "[%s]  %s" % [Controls.pad_name(JOY_BUTTON_A) if Controls.using_pad else "Enter", tr("Continue")]
+	_show_line(lines[0])
+	Sfx.play("click")
+
+
+func bark(speaker: String, text: String) -> void:
+	## A one-line remark that shows while you keep playing.
+	if dialogue_active:
+		return
+	dlg_hint.text = ""
+	_show_line([speaker, text])
+	dlg_bark_t = 3.0 + text.length() * 0.035
+
+
+func _dialogue_advance() -> void:
+	if dlg_text.visible_ratio < 1.0:
+		dlg_text.visible_ratio = 1.0
+		return
+	dlg_i += 1
+	if dlg_i < dlg_lines.size():
+		Sfx.play("click")
+		_show_line(dlg_lines[dlg_i])
+		return
+	dialogue_active = false
+	dlg_panel.visible = false
+	current = ""
+	var then := dlg_then
+	dlg_then = Callable()
+	if then.is_valid():
+		then.call()
+	var queued := after_dialogue.duplicate()
+	after_dialogue.clear()
+	for f in queued:
+		f.call()
+
+
+func _dialogue_process(dt: float) -> void:
+	if not dlg_panel.visible:
+		return
+	if dlg_text.visible_ratio < 1.0:
+		var n := maxi(1, dlg_text.text.length())
+		dlg_text.visible_ratio = minf(1.0, dlg_text.visible_ratio + dt * 55.0 / n)
+	if not dialogue_active:
+		dlg_bark_t -= dt
+		var hide_now := dlg_bark_t <= 0 or not hud.visible or (world == null or not is_instance_valid(world))
+		if hide_now:
+			dlg_panel.visible = false
+
+
 # ================================================================= story
 func show_story(lines: Array, title: String, then: Callable) -> void:
 	## Full-screen text that fades in line by line. Confirm skips ahead, then continues.
@@ -543,6 +721,7 @@ func show_journal() -> void:
 		var m: Dictionary = Data.MEMORIES[i]
 		entries.append([m.title, tr(m.text), mem.has(i) or mem.has(float(i))])
 	entries.append(["Dawn", "\n\n".join(Data.ENDING.map(func(x): return tr(x))), bool(Save.data.get("seen_ending", false))])
+	entries.append(["The Longest Night", "\n\n".join(Data.ENDING_TRUE.map(func(x): return tr(x))), bool(Save.data.get("seen_true_ending", false))])
 	var first: Button = null
 	for e in entries:
 		var b := _button(tr(e[0]) if e[2] else "? ? ?", func(): pass, 640)
@@ -688,6 +867,7 @@ func show_settings(from: String, tab := "", focus := "") -> void:
 				apply_fonts()
 				_build_ach_toast()
 				show_settings.call_deferred(from, "General", "language")))
+			body.add_child(_toggle(tr("Story Dialogue"), "dialogue"))
 			body.add_child(_toggle(tr("Screen Shake"), "shake"))
 			body.add_child(_toggle(tr("Damage Numbers"), "dmg_nums"))
 			body.add_child(_toggle(tr("Reduce Flashing"), "reduce_flash"))
@@ -915,6 +1095,9 @@ void fragment() {
 
 func show_hud(w: World) -> void:
 	world = w
+	dlg_panel.visible = false
+	dialogue_active = false
+	after_dialogue.clear()
 	build_sig = ""
 	hide_overlays()
 	hud.visible = true
@@ -943,6 +1126,7 @@ func _menu_hint() -> String:
 
 func _process(_dt: float) -> void:
 	card_lock -= _dt
+	_dialogue_process(_dt)
 	fps_label.visible = bool(Save.setting("show_fps"))
 	if fps_label.visible:
 		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
@@ -984,7 +1168,8 @@ func _process(_dt: float) -> void:
 			var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(58, 66); ic.setup(w.id, w.lvl, true, w.awake); weapon_row.add_child(ic)
 		for id in world.passive_order:
 			var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(44, 52); ic.setup(id, world.passives[id], true); passive_row.add_child(ic)
-	# boss bars
+	# boss bars (hidden while someone speaks; the dialogue box sits in the same spot)
+	boss_box.visible = not dlg_panel.visible
 	while boss_box.get_child_count() < world.bosses.size() * 2:
 		var nl := _label("", 26, f_head, TEXT, HORIZONTAL_ALIGNMENT_CENTER); nl.label_settings.outline_size = 6
 		boss_box.add_child(nl)
@@ -1218,6 +1403,13 @@ func _visible(name: String) -> bool:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not capture.is_empty():
+		return
+	if dialogue_active:
+		var go := event.is_action_pressed("ui_accept") or event.is_action_pressed("dash") or event.is_action_pressed("ui_cancel")
+		go = go or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT)
+		if go and not event.is_echo():
+			_dialogue_advance()
+			get_viewport().set_input_as_handled()
 		return
 	if _visible("settings"):
 		var tab_d := 0

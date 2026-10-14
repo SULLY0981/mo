@@ -179,6 +179,67 @@ const MEMORIES := [
 	{"title": "The Last Keeper", "text": "When they lit your lantern, they told you the truth: you would not be strong enough. Then they told you the rest: you would not be alone. Every flame you rekindle remembers us."},
 	{"title": "What the King Fears", "text": "He does not fear your fire. He fears the moment you open your lantern and let the light go. He has forgotten that light given away is never lost."},
 ]
+# ---------------------------------------------------------------- dialogue
+# Speakers: "self" (the Keeper you play), a boss id, or "spirit". [speaker, line]
+const SPEAKERS := {
+	"spirit": {"name": "Lamplighter's Spirit", "color": "a8d8ff"},
+}
+# Each Keeper says one of these as a run begins.
+const KEEPER_LINES := {
+	"keeper": ["Another night. Another walk into the dark. Stay lit, little flame.", "The Order is gone. The vows are not."],
+	"warden": ["I held the western gate for twenty years. I can hold one more night.", "Shield up. Light high. Let them come."],
+	"reaper": ["They call me Reaper. I only cut what the dark has already taken.", "Quick hands, short night."],
+	"seer": ["I have seen this night end. I have not seen how.", "The storm remembers the sky. So do I."],
+	"alchemist": ["Seeds of fire, a pinch of luck, and no plan at all. Perfect.", "Every shadow burns at the right temperature."],
+	"saint": ["The cold does not frighten me. I was born in it.", "Be still, little lights. I am here."],
+	"ember": ["I was lit from the last ember of the great shrine. I will not go out.", "Is it always this dark? Then I will burn brighter."],
+}
+# Conversations that pause the game the first time they happen.
+const DIALOGUE := {
+	"boss_warden": [
+		["warden", "Halt. None pass the eastern road after dark."],
+		["self", "Warden, it is always dark now. The sun is gone."],
+		["warden", "Then none shall pass. Ever. Those are my orders."],
+	],
+	"boss_choir": [
+		["choir", "Sing with us, little light. Sing the hymn of the long night."],
+		["self", "Those are not the lantern hymns. You have changed the words."],
+		["choir", "The words changed us. Come. There is room in the chorus."],
+	],
+	"boss_king": [
+		["king", "Another lantern. How many of you must I put out before you understand?"],
+		["self", "Aldric. The Order remembers you."],
+		["king", "That name is gone. I gave it away, with my face and my warmth, to keep the sun safe."],
+		["king", "Out there it would have set. In here, it never ends. No one will ever be cold again."],
+		["self", "Everyone is cold, Aldric. You took the sun from all of us."],
+		["king", "Then come and take it back, if your little flame can bear it."],
+	],
+}
+# One-line remarks that never pause the game.
+const BARKS := {
+	"boss_warden": [["warden", "None pass."]],
+	"boss_warden2": [["warden", "I held the road. I will hold it again. And again. And again."]],
+	"boss_choir": [["choir", "Sing with us..."]],
+	"boss_king": [["king", "Another lantern. Again."]],
+	"defeat_warden": [["warden", "The road... is clear. Tell the captain... I held."]],
+	"defeat_choir": [["choir", "Ah... we remember the old tune now. Thank you."]],
+	"defeat_king": [["king", "It is... so warm. I had forgotten. Thank you, Keeper."]],
+	"shrine": [
+		["spirit", "You came. We waited so long in the dark."],
+		["spirit", "Our flame is yours now. Carry it further than we could."],
+		["spirit", "I was a Lamplighter once. Remember us when the sun returns."],
+		["spirit", "Warm... it is warm again. Go on, Keeper."],
+		["spirit", "Aldric was my friend. Save him, if anything is left to save."],
+	],
+}
+# The true ending, after bringing the dawn on Night 5.
+const ENDING_TRUE := [
+	"On the longest night, a Keeper walked where no one had walked before, and did not go out.",
+	"The Order's shrines blaze again, one after another, across the whole of the world.",
+	"In the first light, the spirits of the Lamplighters gather around you. Aldric stands among them, his face returned.",
+	"\"Keep the flame,\" they say together. \"You always did.\"",
+]
+
 const ENDING := [
 	"The King's lantern cracks, and the stolen dawn spills across the graves and the fields.",
 	"Somewhere in the light, a tired voice says a name it had forgotten, Aldric, and is warm at last.",
