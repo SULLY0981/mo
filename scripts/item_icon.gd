@@ -152,3 +152,7 @@ func _glyph(c: Vector2, k: float, col: Color, wmul: float) -> void:
 			line.call([[-9, -12], [9, -12], [12, 14], [-12, 14]], 4, true)
 			circ.call(0, 2, 5)
 			line.call([[-5, -12], [0, -19], [5, -12]], 4)
+		"cinder":
+			poly.call([[4, -22], [13, -6], [10, 6], [2, 12], [-6, 8], [-8, -2], [-3, 3], [-1, -9]])
+			for x in [-20, -12]:
+				line.call([[x, 10], [x + 7, 16], [x, 22]], 4)

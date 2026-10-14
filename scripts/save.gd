@@ -15,6 +15,7 @@ func _ready() -> void:
 	data = _defaults()
 	_load()
 	_init_steam()
+	Loc.apply(str(data.settings.language))
 	apply_settings()
 
 
@@ -22,8 +23,11 @@ func _defaults() -> Dictionary:
 	return {
 		"coins": 0, "shop": {}, "ach": {},
 		"best": {"time": 0.0, "kills": 0, "level": 0},
-		"totals": {"kills": 0, "runs": 0, "bosses": 0, "wins": 0, "time": 0.0},
-		"settings": {"sfx": 0.8, "music": 0.6, "shake": true, "dmg_nums": true, "fullscreen": true, "quality": 2, "vsync": true},
+		"totals": {"kills": 0, "runs": 0, "bosses": 0, "wins": 0, "time": 0.0, "shrines": 0, "pumpkins": 0},
+		"memories": [], "seen_intro": false, "seen_ending": false,
+		"settings": {"sfx": 0.8, "music": 0.6, "shake": true, "dmg_nums": true, "fullscreen": true, "quality": 2, "vsync": true, "language": "auto",
+			"vibration": true, "vibration_strength": 0.8, "deadzone": 0.25, "prompts": "auto", "binds": {},
+			"reduce_flash": false, "autopause": true, "show_fps": false},
 		"last_char": "keeper",
 	}
 
@@ -51,6 +55,7 @@ func _load() -> void:
 			data[k].merge(parsed[k], true)
 		else:
 			data[k] = parsed[k]
+	data.memories = Array(data.memories).map(func(x): return int(x))  # JSON brings numbers back as floats
 	if not Data.CHARS.has(str(data.last_char)):
 		data.last_char = "keeper"  # unknown id would crash the menu on every boot
 
@@ -146,6 +151,7 @@ func _init_steam() -> void:
 		push_warning("Steam init failed: %s" % res)
 		steam = null
 		return
+	Loc.steam_lang = str(steam.call("getCurrentGameLanguage"))
 	# Re-sync achievements earned while offline.
 	for id in data.ach.keys():
 		steam.call("setAchievement", id)

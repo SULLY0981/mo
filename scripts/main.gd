@@ -11,7 +11,6 @@ var test_log_t := 0.0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS  # keeps Esc/Start/F11 working while paused; World stays PAUSABLE
-	_setup_input()
 	ui = UI.new()
 	ui.main = self
 	add_child(ui)
@@ -32,6 +31,9 @@ func _ready() -> void:
 		if a.begins_with("--menushots="):
 			_menu_shots(a.substr(12))
 			return
+		if a.begins_with("--mapshots="):
+			_map_shots(a.substr(11))
+			return
 	if autotest:
 		Save.data = Save._defaults()
 		var c := "keeper"
@@ -44,33 +46,6 @@ func _ready() -> void:
 			world.set_meta("god", true)
 	else:
 		go_menu()
-
-
-func _setup_input() -> void:
-	var defs := {
-		"move_left": [KEY_A, KEY_LEFT, [JOY_AXIS_LEFT_X, -1.0], JOY_BUTTON_DPAD_LEFT],
-		"move_right": [KEY_D, KEY_RIGHT, [JOY_AXIS_LEFT_X, 1.0], JOY_BUTTON_DPAD_RIGHT],
-		"move_up": [KEY_W, KEY_UP, [JOY_AXIS_LEFT_Y, -1.0], JOY_BUTTON_DPAD_UP],
-		"move_down": [KEY_S, KEY_DOWN, [JOY_AXIS_LEFT_Y, 1.0], JOY_BUTTON_DPAD_DOWN],
-		"pause": [KEY_ESCAPE, KEY_P, JOY_BUTTON_START],
-		"reroll": [KEY_R, JOY_BUTTON_X],
-	}
-	for action in defs:
-		if not InputMap.has_action(action):
-			InputMap.add_action(action, 0.25)
-		for d in defs[action]:
-			var ev: InputEvent
-			if d is Array:
-				ev = InputEventJoypadMotion.new()
-				ev.axis = d[0]
-				ev.axis_value = d[1]
-			elif d is int and d < 32:
-				ev = InputEventJoypadButton.new()
-				ev.button_index = d
-			else:
-				ev = InputEventKey.new()
-				ev.physical_keycode = d
-			InputMap.action_add_event(action, ev)
 
 
 func _new_world() -> void:
@@ -139,14 +114,19 @@ func _on_victory() -> void:
 		world.end_run("victory")
 		return
 	get_tree().paused = true
-	ui.show_victory()
+	if not Save.data.get("seen_ending", false):
+		Save.data.seen_ending = true
+		Save.persist()
+		ui.show_story(Data.ENDING, "Dawn Breaks", func(): ui.show_victory())
+	else:
+		ui.show_victory()
 
 
 func continue_endless() -> void:
 	world.endless = true
 	ui.hide_overlays()
 	get_tree().paused = false
-	ui.banner("THE ENDLESS NIGHT", "How long can your light last?", Color("b38cff"))
+	ui.banner(tr("The Endless Night").to_upper(), tr("How long can your light last?"), Color("b38cff"))
 
 
 func _on_run_finished(reason: String) -> void:
@@ -175,7 +155,7 @@ func abandon() -> void:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and not autotest:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and not autotest and Save.setting("autopause"):
 		if world and world.mode == "run" and ui.current == "" and not world.over:
 			toggle_pause()
 
@@ -209,14 +189,20 @@ func _process(_delta: float) -> void:
 				get_tree().quit()
 		return
 	if shots_dir != "":
-		for st in [6.0, 75.0, 186.0, 380.0, 545.0]:
+		if world.shrine_prog > 0.6 and not world.has_meta("shot_shrine"):
+			world.set_meta("shot_shrine", true)
+			world.sync_visuals(1.0 / 60.0)
+			await RenderingServer.frame_post_draw
+			get_viewport().get_texture().get_image().save_png("%s/shrine.png" % shots_dir)
+			return
+		for st in [6.0, 75.0, 186.0, 380.0, 545.0, 640.0]:
 			if world.time >= st and not world.has_meta("shot%d" % st):
 				world.set_meta("shot%d" % st, true)
 				world.sync_visuals(1.0 / 60.0)
 				await RenderingServer.frame_post_draw
 				get_viewport().get_texture().get_image().save_png("%s/play_%03d.png" % [shots_dir, int(st)])
 				print("SHOT ", st)
-				if st >= 545.0:
+				if st >= 640.0:
 					get_tree().quit()
 				return
 	for i in steps:
@@ -241,6 +227,7 @@ func _print_summary(reason: String) -> void:
 	for w in world.weapons:
 		ws.append("%s%d:%d" % [w.id, w.lvl, int(w.dmg_total)])
 	print("AUTOTEST END reason=%s t=%d lvl=%d kills=%d won=%s coins=%d weapons=%s passives=%s dmg=%s" % [reason, world.time, world.P.level, world.kills, world.won, world.coins, " ".join(ws), world.passives, world.get_meta("dmglog", {})])
+	print("AUTOTEST MAP shrines_lit=%d pumpkins=%d memories=%d" % [Save.data.totals.shrines, Save.data.totals.pumpkins, Save.data.memories.size()])
 
 
 func _shot(dir: String, name: String) -> void:
@@ -253,9 +240,21 @@ func _menu_shots(dir: String) -> void:
 	Save.data = Save._defaults()
 	Save.data.coins = 1250
 	Save.data.ach = {"ACH_SURVIVE_5": 1, "ACH_BOSS": 1, "ACH_FIRST_NIGHT": 1}
+	Save.data.settings.autopause = false
+	Save.data.memories = [0, 1, 2, 3]
 	go_menu()
 	await get_tree().create_timer(4.0).timeout
 	await _shot(dir, "menu")
+	ui.show_story(Data.INTRO, "", func(): pass)
+	await get_tree().create_timer(9.0).timeout
+	await _shot(dir, "intro")
+	ui.show_journal()
+	await get_tree().create_timer(1.0).timeout
+	await _shot(dir, "journal")
+	for tab in ["General", "Controls"]:
+		ui.show_settings("menu", tab)
+		await get_tree().create_timer(1.0).timeout
+		await _shot(dir, "settings_" + tab.to_lower())
 	ui.show_chars()
 	await get_tree().create_timer(2.0).timeout
 	await _shot(dir, "chars")
@@ -276,6 +275,40 @@ func _menu_shots(dir: String) -> void:
 	get_tree().paused = true
 	await get_tree().create_timer(1.0).timeout
 	await _shot(dir, "pause")
+	get_tree().quit()
+
+
+func _map_shots(dir: String) -> void:
+	## Visits each region (and a shrine) with enemies cleared, for checking the map and for store shots.
+	Save.data = Save._defaults()
+	Save.data.settings.autopause = false
+	for ach in Data.ACHIEVEMENTS:
+		Save.data.ach[ach.id] = 1
+	start_run("keeper")
+	world.set_meta("god", true)
+	await get_tree().create_timer(1.0).timeout
+	for reg in [1, 2, 3, 0]:
+		var spot := Vector2.ZERO
+		for i in 4000:
+			var p := Vector2(randf_range(-600, 600), randf_range(-600, 600))
+			if p.length() > 60 and world.region_at(p) == reg and world.region_at(p + Vector2(10, 0)) == reg and world.region_at(p + Vector2(0, 10)) == reg:
+				spot = p
+				break
+		world.ppos = spot
+		world.cam_target = Vector3(spot.x, 0, spot.y)
+		for e in world.enemies:
+			e.dead = true
+		world._cleanup()
+		world.sync_visuals(0.016)
+		if reg == 0:
+			var sh: Dictionary = world._make_shrine()
+			sh.node.position = Vector3(spot.x + 2.5, 0, spot.y - 1.5)
+			world.add_child(sh.node)
+			sh.flame.scale = Vector3.ONE
+			sh.light.light_color = Color(1.0, 0.7, 0.35); sh.light.light_energy = 3.0; sh.light.omni_range = 9.0
+			world.spawn_pickup("pumpkin", spot + Vector2(-2.2, 1.0))
+		await get_tree().create_timer(2.5).timeout
+		await _shot(dir, "region_%d" % reg)
 	get_tree().quit()
 
 

@@ -16,6 +16,7 @@ config/icon="res://assets/icon.png"
 
 Save="*res://scripts/save.gd"
 Sfx="*res://scripts/audio.gd"
+Controls="*res://scripts/controls.gd"
 
 [display]
 

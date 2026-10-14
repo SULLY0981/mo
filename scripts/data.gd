@@ -62,7 +62,13 @@ const PASSIVES := {
 	"renewal": {"name": "Sap Vial",    "color": "7dff9a", "desc": "+0.3 HP/s Recovery", "max": 5},
 	"luck":    {"name": "Four-Leaf",   "color": "5dff8f", "desc": "+10% Luck", "max": 5},
 	"light":   {"name": "Bright Oil",  "color": "fff3b0", "desc": "+15% Light Radius. Enemies in your light take +15% damage.", "max": 3},
+	"cinder":  {"name": "Cinder Step", "color": "ff7a3d", "desc": "Your dash scorches enemies in its path and recharges 15% faster.", "max": 3},
 }
+
+# Dash: seconds of cooldown, speed while dashing (m/s), and duration.
+const DASH_CD := 3.2
+const DASH_SPEED := 21.0
+const DASH_TIME := 0.2
 
 const CHAR_ORDER := ["keeper", "warden", "reaper", "seer", "alchemist", "saint", "ember"]
 const CHARS := {
@@ -109,6 +115,54 @@ const ACHIEVEMENTS := [
 	{"id": "ACH_RICH", "name": "Hoarder", "desc": "Have 2,000 Embers saved."},
 	{"id": "ACH_NO_HIT_3", "name": "Untouchable", "desc": "Survive the first 3 minutes without taking damage."},
 	{"id": "ACH_ALL_CHARS", "name": "Fellowship of Flame", "desc": "Unlock every Keeper."},
+	{"id": "ACH_SHRINE", "name": "Rekindled", "desc": "Light a lantern shrine."},
+	{"id": "ACH_SHRINES_25", "name": "Keeper of Shrines", "desc": "Light 25 lantern shrines in total."},
+	{"id": "ACH_MEMORIES", "name": "Keeper of Memory", "desc": "Recover every memory of the Order."},
+	{"id": "ACH_PUMPKINS", "name": "Trick or Treat", "desc": "Smash 100 jack-o'-lanterns."},
+]
+
+# ---------------------------------------------------------------- map
+# Regions of the night. The starting clearing is always the Graveyard.
+const REGIONS := [
+	{"name": "The Graveyard", "color": "b9a7ff"},
+	{"name": "The Pumpkin Fields", "color": "ff9a3d"},
+	{"name": "The Dead Woods", "color": "7fd8a0"},
+	{"name": "The Chapel Ruins", "color": "c8c0d8"},
+]
+const SHRINE_TIME := 2.5  # seconds standing beside a shrine to kindle it
+const BLESSINGS := [
+	{"id": "warmth", "name": "Blessing of Warmth", "desc": "Your wounds close."},
+	{"id": "insight", "name": "Blessing of Insight", "desc": "You grow stronger."},
+	{"id": "fury", "name": "Blessing of Fury", "desc": "+50% damage for 30 seconds."},
+	{"id": "haste", "name": "Blessing of Haste", "desc": "Faster weapons and feet for 30 seconds."},
+]
+
+# ---------------------------------------------------------------- story
+const INTRO := [
+	"One hundred nights ago, the sun did not rise.",
+	"The Lamplighters kept the shrines burning and the dark at bay. One by one, their lights went out.",
+	"Now only one lantern remains. Yours.",
+	"Survive until dawn. Rekindle the shrines. Remember.",
+]
+const MEMORIES := [
+	{"title": "The First Lamp", "text": "Before the Order, before the shrines, a girl carried a candle into the woods so her brother could find his way home. She never stopped carrying it. Every Lamplighter since is her child."},
+	{"title": "The Three Vows", "text": "Keep the flame. Share the flame. Never hoard the flame. Every Lamplighter speaks the three vows on the night of their first watch."},
+	{"title": "Aldric", "text": "Aldric was the best of us. He could light a lantern with a whisper. He was also the most afraid: of the dark, of the cold, of losing anyone at all."},
+	{"title": "Hallow's Eve", "text": "Every Hallow's Eve the villages carved faces into pumpkins and set our embers inside, so the dead could find their way. The dead found their way. So did other things."},
+	{"title": "The Ashen Warden", "text": "The Warden guarded the eastern road for forty years. When the dark took him, he kept guarding it. He only forgot what he was guarding it from."},
+	{"title": "The Hollow Choir", "text": "Seven sisters sang the lantern hymns at the great shrine. When the dark came they would not stop singing. They are singing still. The words are wrong now."},
+	{"title": "The Theft", "text": "Aldric climbed the eastern hill before dawn and opened his lantern wide. The sun went in, and did not come out. \"Now it can never go out,\" he said. \"Now no one will ever be cold.\""},
+	{"title": "Hollow", "text": "A lantern that holds the sun has no room for anything else. Aldric's name went first. Then his face. What remains wears a crown of dead candles and calls itself King."},
+	{"title": "The Shrines Go Dark", "text": "Without the dawn, the shrines burn only what we give them. We gave them oil, then wood, then our own warmth. One by one, the Keepers went quiet."},
+	{"title": "The Pumpkin Fields", "text": "The fields still glow every Hallow's Eve. No one carves the pumpkins anymore. They carve themselves, and wait for someone to bring them a light."},
+	{"title": "The Last Keeper", "text": "When they lit your lantern, they told you the truth: you would not be strong enough. Then they told you the rest: you would not be alone. Every flame you rekindle remembers us."},
+	{"title": "What the King Fears", "text": "He does not fear your fire. He fears the moment you open your lantern and let the light go. He has forgotten that light given away is never lost."},
+]
+const ENDING := [
+	"The King's lantern cracks, and the stolen dawn spills across the graves and the fields.",
+	"Somewhere in the light, a tired voice says a name it had forgotten, Aldric, and is warm at last.",
+	"The night is over. But the Order teaches that there is always another night, and always someone who needs a light.",
+	"Keep the flame. Share the flame.",
 ]
 
 static func ach_by_id(id: String) -> Dictionary:

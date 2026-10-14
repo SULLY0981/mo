@@ -99,6 +99,7 @@ class Pickup:
 	var v := 0
 	var node: Node3D
 	var dead := false
+	var key := ""
 
 class Bullet:
 	var pos := Vector2.ZERO
@@ -146,6 +147,13 @@ var ppos := Vector2.ZERO
 var pface := Vector2(0, 1)
 var pmoving := false
 var iframe := 0.0
+var dash_t := 0.0
+var dash_cd := 0.0
+var dash_dir := Vector2.ZERO
+var dash_req := false
+var dash_burn_t := 0.0
+var maxpow_acc := 0
+var maxpow_last := -99.0
 
 # ---------------------------------------------------------------- nodes
 var cam: Camera3D
@@ -196,6 +204,7 @@ func _ready() -> void:
 	_build_materials()
 	_build_environment()
 	_build_ground()
+	_build_map_assets()
 	_load_scenes()
 	_build_pools()
 	player_node = _spawn_model("player")
@@ -337,6 +346,9 @@ func _build_ground() -> void:
 	sh.code = """
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
+uniform sampler2D region_tex : filter_linear, repeat_disable;
+uniform vec2 region_origin = vec2(-256.0);
+uniform float region_size = 512.0;
 varying vec3 wpos;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
@@ -358,12 +370,25 @@ void fragment() {
 	c = mix(c, dirt, smoothstep(0.52, 0.68, big + mid * 0.25));
 	float path = smoothstep(0.03, 0.0, abs(fbm(p * 0.03 + 11.0) - 0.5) - 0.02);
 	c = mix(c, stone * (0.8 + fine * 0.5), path * 0.85);
+	// Regions, baked into region_tex (r = pumpkin fields, g = dead woods, b = chapel ruins).
+	vec2 warp = vec2(vnoise(p * 0.15), vnoise(p * 0.15 + 5.0)) - 0.5;
+	vec3 w = texture(region_tex, (p - region_origin) / region_size + warp * 0.014).rgb;
+	vec3 soil = vec3(0.11, 0.06, 0.035) * (0.75 + 0.35 * smoothstep(0.2, 0.8, abs(sin(p.x * 2.2 + mid * 2.0))));
+	vec3 woods = vec3(0.03, 0.055, 0.04) * (0.7 + mid * 0.6);
+	vec2 cell = floor(p * 1.1);
+	vec2 f = fract(p * 1.1);
+	float grout = smoothstep(0.0, 0.07, min(min(f.x, f.y), min(1.0 - f.x, 1.0 - f.y)));
+	vec3 tiles = vec3(0.085, 0.08, 0.095) * (0.75 + hash(cell) * 0.4) * mix(0.45, 1.0, grout);
+	c = mix(c, soil, smoothstep(0.3, 0.7, w.r));
+	c = mix(c, woods, smoothstep(0.3, 0.7, w.g));
+	c = mix(c, tiles, smoothstep(0.3, 0.7, w.b) * 0.9);
 	c *= 0.75 + fine * 0.5;
 	ALBEDO = c;
 	ROUGHNESS = 0.95;
 }
 """
 	var m := ShaderMaterial.new(); m.shader = sh
+	ground_mat = m
 	ground.material_override = m
 	ground.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(ground)
@@ -525,6 +550,9 @@ func _pool_get(kind: String) -> Node3D:
 		"tele":
 			var mi := MeshInstance3D.new(); var pm := PlaneMesh.new(); pm.size = Vector2(1, 1); mi.mesh = pm; mi.material_override = tele_mat
 			node = mi
+		"pumpkin":
+			node = _make_pumpkin(true)
+			node.scale = Vector3.ONE * 0.55
 		_:
 			node = _spawn_model(kind)
 			for mi in node.find_children("*", "MeshInstance3D", true, false):
@@ -557,13 +585,15 @@ func setup_menu(c: String) -> void:
 func start_run(c: String) -> void:
 	mode = "run"
 	char_id = c
+	map_seed = randi() % 100000
+	reg_noise.seed = map_seed
 	_tint_player(c)
 	P = {"level": 1, "xp": 0.0, "xp_next": xp_for(1), "revives": Save.shop_level("revive"), "rerolls": Save.shop_level("reroll"), "max_hp": 0.0, "hp": 0.0}
 	recalc_stats()
 	P.hp = P.max_hp
 	add_weapon(Data.CHARS[c].weapon)
 	_update_chunks(true)
-	toast.emit("Survive until dawn", Color("ffd166"))
+	toast.emit(tr("Survive until dawn"), Color("ffd166"))
 
 
 func _tint_player(c: String) -> void:
@@ -601,6 +631,7 @@ func recalc_stats() -> void:
 	P.greed = 1 + sh.call("greed") * 0.1
 	P.light = 9.0 * mods.get("light", 1.0) * (1 + 0.15 * pl.call("light"))
 	P.light_bonus = 1.15 if pl.call("light") > 0 else 1.0
+	P.dash_cd = Data.DASH_CD * pow(0.85, pl.call("cinder"))
 	if old_max > 0:
 		P.hp = minf(P.max_hp, P.hp + maxf(0, P.max_hp - old_max))
 	lantern_light.omni_range = P.light * 1.35
@@ -637,11 +668,20 @@ func step(dt: float) -> void:
 		if victory_t <= 0:
 			victory_ready.emit()
 	time += dt
+	dash_cd -= dt
 	if dying <= 0:
 		var mv := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 		if has_meta("bot"):
 			mv = _bot_move()
-		ppos += mv * P.speed * dt
+		if dash_req:
+			dash_req = false
+			_try_dash(mv)
+		if dash_t > 0:
+			dash_t -= dt
+			ppos += dash_dir * Data.DASH_SPEED * dt
+			_dash_burn(dt)
+		else:
+			ppos += mv * P.speed * (1.25 if haste_t > 0 else 1.0) * dt
 		_resolve_props()
 		pmoving = mv.length() > 0.1
 		if pmoving:
@@ -652,14 +692,19 @@ func step(dt: float) -> void:
 	if not won or endless:
 		_director(dt)
 	_build_grid()
+	fury_t -= dt
+	haste_t -= dt
 	if dying <= 0:
 		for w in weapons:
-			_weapon_update(w, dt)
+			_weapon_update(w, dt * (1.3 if haste_t > 0 else 1.0))
 	_update_enemies(dt)
 	_update_projs(dt)
 	_update_bullets(dt)
 	_update_gems(dt)
 	_update_pickups(dt)
+	_update_shrines(dt)
+	_check_region(dt)
+	_update_atmosphere(dt)
 	_cleanup()
 	ach_t -= dt
 	if ach_t <= 0:
@@ -667,6 +712,35 @@ func step(dt: float) -> void:
 		check_achievements()
 	if pending_levels > 0 and dying <= 0 and not over:
 		_offer_level()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if mode == "run" and event.is_action_pressed("dash") and not event.is_echo():
+		dash_req = true
+
+
+func _try_dash(mv: Vector2) -> void:
+	if dash_cd > 0 or dash_t > 0:
+		return
+	dash_dir = mv.normalized() if mv.length() > 0.1 else pface
+	dash_t = Data.DASH_TIME
+	dash_cd = P.dash_cd
+	dash_burn_t = 0.0
+	iframe = maxf(iframe, Data.DASH_TIME + 0.15)
+	Sfx.play("dash")
+	burst(ppos, 0.6, Color("ffb347"), 0.6)
+	Controls.rumble(0.25, 0.0, 0.12)
+
+
+func _dash_burn(dt: float) -> void:
+	var lv := int(passives.get("cinder", 0))
+	if lv <= 0:
+		return
+	dash_burn_t -= dt
+	if dash_burn_t <= 0:
+		dash_burn_t = 0.05
+		aoe(ppos, 1.6 * P.area, 10.0 + 8.0 * lv, 6.0, Color("ff7a3d"), null)
+		burst(ppos, 0.4, Color("ff7a3d"), 0.4)
 
 
 func _cleanup() -> void:
@@ -817,7 +891,8 @@ func spawn_boss(type: String, mult: float) -> void:
 	enemies.append(e)
 	bosses.append(e)
 	boss_changed.emit(true)
-	banner.emit(B.name.to_upper(), "has awakened", Color(B.color))
+	banner.emit(tr(B.name).to_upper(), tr("has awakened"), Color(B.color))
+	Controls.rumble(0.3, 0.7, 0.6)
 	Sfx.play("boss_roar")
 	add_shake(0.6)
 
@@ -840,11 +915,14 @@ func _ring_spawn(type: String, n: int, msg: String) -> void:
 	for i in n:
 		var a := float(i) / n * TAU
 		spawn_enemy(type, ppos + Vector2(cos(a), sin(a)) * SPAWN_R * 0.8)
-	toast.emit(msg, Color("ff7b9a"))
+	toast.emit(tr(msg), Color("ff7b9a"))
 
 
 func _director(dt: float) -> void:
 	var m := time / 60.0
+	if time >= 600.0 and not won and not has_meta("blood_banner"):
+		set_meta("blood_banner", true)
+		banner.emit(tr("The Blood Moon Rises").to_upper(), tr("The final hour has come"), Color("ff4d4d"))
 	for b in Data.BOSS_SCHEDULE:
 		if time >= b[0] and not boss_done.has(b[0]):
 			boss_done[b[0]] = true
@@ -875,7 +953,7 @@ func _director(dt: float) -> void:
 func hurt_enemy(e: Enemy, base: float, kdir: Vector2, kb: float, w: Weapon) -> void:
 	if e.dead:
 		return
-	var dmg: float = base * P.might
+	var dmg: float = base * P.might * (1.5 if fury_t > 0 else 1.0)
 	if P.light_bonus > 1.0 and e.pos.distance_squared_to(ppos) < pow(P.light * 0.6, 2):
 		dmg *= P.light_bonus
 	var crit: bool = randf() < 0.05 * P.luck
@@ -924,13 +1002,13 @@ func kill_enemy(e: Enemy) -> void:
 			victory_t = 2.8
 			Save.data.totals.wins += 1
 			Save.unlock("ACH_DAWN")
-			banner.emit("DAWN BREAKS", "The Hollow King has fallen", Color("ffd166"))
+			banner.emit(tr("Dawn Breaks").to_upper(), tr("The Hollow King has fallen"), Color("ffd166"))
 			Sfx.play("victory")
 			for o in enemies:
 				if not o.boss and not o.dead:
 					o.dead = true
 		else:
-			banner.emit("BOSS DEFEATED", e.bname, Color("ffd166"))
+			banner.emit(tr("Boss Defeated").to_upper(), tr(e.bname), Color("ffd166"))
 		return
 	Sfx.play("kill")
 	drop_gem(e.pos, e.xp)
@@ -965,18 +1043,20 @@ func damage_player(raw: float, src := "?") -> void:
 	took_damage = true
 	add_shake(0.35)
 	Sfx.play("hurt")
+	Controls.rumble(0.35, 0.55, 0.15)
 	if P.hp <= 0:
 		if P.revives > 0:
 			P.revives -= 1
 			P.hp = P.max_hp * 0.6
 			iframe = 2.5
 			nuke(true)
-			banner.emit("SECOND FLAME", "You rise again", Color("ffb347"))
+			banner.emit(tr("Second Flame").to_upper(), tr("You rise again"), Color("ffb347"))
 			Sfx.play("revive")
 		else:
 			P.hp = 0
 			dying = 1.6
 			Sfx.play("death")
+			Controls.rumble(0.8, 1.0, 0.6)
 			burst(ppos, 1.2, Color("ffb347"), 3.0)
 			add_shake(0.8)
 
@@ -1397,7 +1477,7 @@ func spawn_pickup(kind: String, at: Vector2) -> void:
 	p.pos = at
 	p.t = randf() * 6
 	p.v = randi_range(1, 3) if kind == "coin" else 0
-	var model: String = {"coin": "coin", "chest": "chest", "heart": "heart", "magnet": "magnet", "bomb": "orb"}[kind]
+	var model: String = {"coin": "coin", "chest": "chest", "heart": "heart", "magnet": "magnet", "bomb": "orb", "pumpkin": "pumpkin"}[kind]
 	p.node = _pool_get(model)
 	pickups.append(p)
 
@@ -1441,6 +1521,13 @@ func _update_pickups(dt: float) -> void:
 			p.dead = true
 			if p.kind == "coin":
 				coins += maxi(1, int(round(p.v * P.greed)))
+			elif p.kind == "pumpkin":
+				map_objs.erase(p.key)  # may grow back when you return
+			continue
+		if p.kind == "pumpkin":
+			if d2 < 1.1 or (dash_t > 0 and d2 < 2.2):
+				p.dead = true
+				_smash_pumpkin(p)
 			continue
 		if not p.mag and d2 < m2:
 			p.mag = true
@@ -1468,15 +1555,15 @@ func _collect(p: Pickup) -> void:
 		"heart":
 			P.hp = minf(P.max_hp, P.hp + maxf(30.0, P.max_hp * 0.3))
 			Sfx.play("pickup")
-			toast.emit("+HP", Color("ff5d73"))
+			toast.emit(tr("+HP"), Color("ff5d73"))
 		"magnet":
 			for g in gems:
 				g[2] = true
 			Sfx.play("pickup")
-			toast.emit("Lodestar!", Color("6ec6ff"))
+			toast.emit(tr("Lodestar!"), Color("6ec6ff"))
 		"bomb":
 			nuke(false)
-			toast.emit("Flashbang!", Color("fff3b0"))
+			toast.emit(tr("Flashbang!"), Color("fff3b0"))
 		"chest":
 			_open_chest()
 	burst(p.pos, 0.5, Color("ffd166"), 0.5)
@@ -1503,12 +1590,13 @@ func _open_chest() -> void:
 		var o: Dictionary = opts.pick_random()
 		apply_choice(o)
 		var lvl: int = _weapon(o.id).lvl if o.type == "w" else passives[o.id]
-		got.append("%s Lv%d" % [Data.item_def(o.id).name, lvl])
+		got.append(tr(Data.item_def(o.id).name) + " " + tr("LV %d") % lvl)
 	var c := int(round(randi_range(10, 25) * P.greed))
 	coins += c
-	got.append("+%d Embers" % c)
-	banner.emit("BLESSED TREASURE!" if n == 3 else "TREASURE!", "  ·  ".join(got), Color("ffd166"))
+	got.append("+" + tr("%d Embers") % c)
+	banner.emit((tr("Blessed Treasure!") if n == 3 else tr("Treasure!")).to_upper(), "  ·  ".join(got), Color("ffd166"))
 	Sfx.play("chest")
+	Controls.rumble(0.25, 0.25, 0.2)
 	burst(ppos, 1.0, Color("ffd166"), 2.0)
 	fx_light(ppos, Color("ffd166"), 8.0, 0.6)
 
@@ -1581,7 +1669,11 @@ func _offer_level() -> void:
 		var c := int(round(5 * n * P.greed))
 		coins += c
 		P.hp = minf(P.max_hp, P.hp + P.max_hp * 0.1 * n)
-		toast.emit("MAX POWER  +%d Embers" % c, Color("ffd166"))
+		maxpow_acc += c
+		if time - maxpow_last >= 6.0:
+			maxpow_last = time
+			toast.emit(tr("Max Power").to_upper() + "  +" + tr("%d Embers") % maxpow_acc, Color("ffd166"))
+			maxpow_acc = 0
 		return
 	level_up_ready.emit()
 
@@ -1639,7 +1731,31 @@ func check_achievements() -> void:
 
 
 # ================================================================= world props
+func _update_region_tex() -> void:
+	## Bakes which region covers each 4 m cell around the player, for the ground shader to blend.
+	if ppos.distance_to(region_center) < 110.0:
+		return
+	region_center = ppos.snapped(Vector2(16, 16))
+	var px := 128
+	var size := 512.0
+	var origin := region_center - Vector2(size, size) * 0.5
+	var img := Image.create(px, px, false, Image.FORMAT_RGB8)
+	var step := size / px
+	for y in px:
+		for x in px:
+			var r := region_at(origin + Vector2((x + 0.5) * step, (y + 0.5) * step))
+			img.set_pixel(x, y, Color(float(r == 1), float(r == 2), float(r == 3)))
+	if region_tex == null:
+		region_tex = ImageTexture.create_from_image(img)
+	else:
+		region_tex.update(img)
+	ground_mat.set_shader_parameter("region_tex", region_tex)
+	ground_mat.set_shader_parameter("region_origin", origin)
+	ground_mat.set_shader_parameter("region_size", size)
+
+
 func _update_chunks(force := false) -> void:
+	_update_region_tex()
 	var c := Vector2i(floori(ppos.x / CHUNK), floori(ppos.y / CHUNK))
 	if not force and has_meta("chunk") and get_meta("chunk") == c:
 		return
@@ -1653,9 +1769,25 @@ func _update_chunks(force := false) -> void:
 			chunks[k].queue_free()
 			chunks.erase(k)
 			colliders.erase(k)
+			shrines = shrines.filter(func(s): return s.chunk != k)
 	for k in want:
 		if not chunks.has(k):
 			_make_chunk(k)
+
+
+const CHUNK_TABLES := [
+	# 0 Graveyard
+	[["tree_dead_a", 14, 0.5], ["tree_dead_b", 12, 0.5], ["tree_pine_a", 4, 0.9], ["grave_a", 14, 0.45], ["grave_b", 10, 0.35],
+		["grave_c", 10, 0.4], ["rock_a", 6, 0.8], ["mushrooms", 6, 0.0], ["fence", 5, 0.0], ["candles", 6, 0.0], ["pumpkin", 3, 0.0]],
+	# 1 Pumpkin Fields
+	[["pumpkin", 40, 0.0], ["fence", 10, 0.0], ["tree_dead_b", 5, 0.5], ["rock_b", 4, 0.6], ["mushrooms", 4, 0.0], ["candles", 3, 0.0]],
+	# 2 Dead Woods
+	[["tree_pine_a", 16, 0.9], ["tree_pine_b", 14, 0.9], ["tree_dead_a", 12, 0.5], ["tree_dead_b", 10, 0.5], ["rock_a", 6, 0.8],
+		["mushrooms", 12, 0.0], ["rock_b", 4, 0.6]],
+	# 3 Chapel Ruins
+	[["ruins", 14, 0.9], ["rock_a", 8, 0.8], ["rock_b", 8, 0.6], ["candles", 10, 0.0], ["grave_a", 6, 0.45], ["grave_c", 4, 0.4], ["tree_dead_a", 4, 0.5]],
+]
+const CHUNK_COUNTS := [[2, 6], [6, 11], [9, 14], [3, 7]]
 
 
 func _make_chunk(k: Vector2i) -> void:
@@ -1664,16 +1796,16 @@ func _make_chunk(k: Vector2i) -> void:
 	chunks[k] = root
 	var cols := []
 	var r := RandomNumberGenerator.new()
-	r.seed = hash(k) + 1337
+	r.seed = hash(k) + 1337 + map_seed * 7919
 	var origin := Vector2(k.x * CHUNK, k.y * CHUNK)
+	var reg := region_at(origin + Vector2(CHUNK, CHUNK) * 0.5)
 	var safe := k == Vector2i(0, 0) or k == Vector2i(-1, 0) or k == Vector2i(0, -1) or k == Vector2i(-1, -1)
-	var n := r.randi_range(2, 6)
-	var table := [["tree_dead_a", 14, 0.5], ["tree_dead_b", 12, 0.5], ["tree_pine_a", 6, 0.9], ["tree_pine_b", 5, 0.9],
-		["grave_a", 10, 0.45], ["grave_b", 8, 0.35], ["grave_c", 8, 0.4], ["rock_a", 8, 0.8], ["rock_b", 6, 0.6],
-		["mushrooms", 8, 0.0], ["ruins", 3, 0.9], ["fence", 4, 0.0], ["candles", 4, 0.0]]
+	var table: Array = CHUNK_TABLES[reg]
+	var n := r.randi_range(CHUNK_COUNTS[reg][0], CHUNK_COUNTS[reg][1])
 	var total := 0
 	for t in table:
 		total += t[1]
+	var lit_i := 0
 	for i in n:
 		var pick := r.randi_range(0, total - 1)
 		var choice: Array = table[0]
@@ -1684,6 +1816,26 @@ func _make_chunk(k: Vector2i) -> void:
 				break
 		var at := origin + Vector2(r.randf_range(1, CHUNK - 1), r.randf_range(1, CHUNK - 1))
 		if safe and at.length() < 5.0:
+			continue
+		if choice[0] == "pumpkin":
+			# Some pumpkins are carved, glowing jack-o'-lanterns you can smash for treats.
+			var lit_chance := 0.22 if reg == 1 else 0.6
+			if mode == "run" and r.randf() < lit_chance:
+				var key := "pk_%d_%d_%d" % [k.x, k.y, lit_i]
+				lit_i += 1
+				if not map_objs.has(key):
+					map_objs[key] = "alive"
+					spawn_pickup("pumpkin", at)
+					var pp: Pickup = pickups[pickups.size() - 1]
+					pp.key = key
+					pp.node.rotation.y = r.randf_range(-0.6, 0.6)  # carved face toward the camera
+				continue
+			var deco := _make_pumpkin(false)
+			deco.position = Vector3(at.x, 0, at.y)
+			deco.rotation.y = r.randf() * TAU
+			var ds := r.randf_range(0.3, 0.55)
+			deco.scale = Vector3(ds, ds * r.randf_range(0.85, 1.05), ds)
+			root.add_child(deco)
 			continue
 		if not scenes.has(choice[0]):
 			continue
@@ -1711,15 +1863,28 @@ func _make_chunk(k: Vector2i) -> void:
 				g.rotation.y = node.rotation.y + r.randf_range(-0.3, 0.3)
 				root.add_child(g)
 				cols.append([at + off, 0.4])
+	# A lantern shrine in roughly one chunk of eight, never in the starting clearing.
+	if mode == "run" and absi(k.x) + absi(k.y) >= 2 and r.randf() < 0.1:
+		var key := "sh_%d_%d" % [k.x, k.y]
+		var at := origin + Vector2(CHUNK, CHUNK) * 0.5 + Vector2(r.randf_range(-3, 3), r.randf_range(-3, 3))
+		var sh := _make_shrine()
+		sh.node.position = Vector3(at.x, 0, at.y)
+		root.add_child(sh.node)
+		cols.append([at, 0.8])
+		var rec := {"key": key, "chunk": k, "pos": at, "lit": false, "prog": 0.0, "fx_t": 0.0,
+			"flame": sh.flame, "light": sh.light}
+		shrines.append(rec)
+		if map_objs.get(key, "") == "lit":
+			_light_shrine_visual(rec)
 	# grass
 	if scenes.has("grass"):
 		var mmi := MultiMeshInstance3D.new()
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.mesh = _first_mesh(scenes["grass"])
-		var count := 70 if quality >= 1 else 25
-		mm.instance_count = count
-		for i in count:
+		var count := (70 if quality >= 1 else 25) * (1.5 if reg == 1 else (0.6 if reg == 3 else 1.0))
+		mm.instance_count = int(count)
+		for i in int(count):
 			var p := origin + Vector2(r.randf() * CHUNK, r.randf() * CHUNK)
 			var b := Basis(Vector3.UP, r.randf() * TAU).scaled(Vector3.ONE * r.randf_range(0.7, 1.4))
 			mm.set_instance_transform(i, Transform3D(b, Vector3(p.x, 0, p.y)))
@@ -1727,6 +1892,17 @@ func _make_chunk(k: Vector2i) -> void:
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(mmi)
 	colliders[k] = cols
+
+
+func _light_shrine_visual(s: Dictionary) -> void:
+	s.lit = true
+	s.prog = 1.0
+	if is_instance_valid(s.light):
+		s.light.light_color = Color(1.0, 0.7, 0.35)
+		s.light.light_energy = 3.0
+		s.light.omni_range = 9.0
+	if is_instance_valid(s.flame):
+		s.flame.scale = Vector3.ONE
 
 
 func _resolve_props() -> void:
@@ -1739,6 +1915,286 @@ func _resolve_props() -> void:
 				var l := d.length()
 				if l < r and l > 0.0001:
 					ppos = col[0] + d / l * r
+
+
+# ================================================================= map: regions, pumpkins, shrines
+var map_seed := 7
+var reg_noise := FastNoiseLite.new()
+var map_objs := {}        # "pk_x_y_i" / "sh_x_y" -> "alive" | "used" | "lit"
+var shrines: Array = []   # {key, chunk, pos, lit, prog, flame, light, ember}
+var shrine_prog := 0.0    # kindling progress of the nearest shrine, for the HUD
+var cur_region := -1
+var fury_t := 0.0
+var haste_t := 0.0
+var blood := 0.0
+var ground_mat: ShaderMaterial
+var region_tex: ImageTexture
+var region_center := Vector2(1e9, 1e9)
+var pumpkin_body: Mesh
+var pumpkin_face: Mesh
+var pumpkin_mat: StandardMaterial3D
+var pumpkin_dull_mat: StandardMaterial3D
+var face_mat: StandardMaterial3D
+var stem_mesh: CylinderMesh
+var stem_mat: StandardMaterial3D
+var stone_mat: StandardMaterial3D
+var shrine_flame_mat: StandardMaterial3D
+
+
+func _build_map_assets() -> void:
+	reg_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	reg_noise.frequency = 0.011
+	reg_noise.seed = map_seed
+	# Pumpkin: a ribbed, squashed sphere with a carved glowing face on the jack-o'-lanterns.
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rings := 14
+	var segs := 40
+	var grid := []
+	for i in rings + 1:
+		var th := float(i) / rings * PI
+		var row := []
+		for j in segs + 1:
+			var ph := float(j) / segs * TAU
+			var rib := 1.0 - 0.1 * pow(absf(sin(ph * 4.0)), 0.7)
+			var r := sin(th) * rib
+			var y := -cos(th) * 0.7 * (1.0 - 0.18 * pow(cos(th), 8.0))
+			row.append(Vector3(cos(ph) * r, y + 0.7, sin(ph) * r))
+		grid.append(row)
+	for i in rings:
+		for j in segs:
+			var q := [grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j], grid[i + 1][j + 1], grid[i][j + 1]]
+			for p in q:
+				var n: Vector3 = Vector3(p.x, (p.y - 0.7) / 0.49, p.z).normalized()
+				st.set_normal(n)
+				st.add_vertex(p)
+	pumpkin_body = st.commit()
+	var fs := SurfaceTool.new()
+	fs.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var shapes := [
+		[[-0.46, 0.16], [-0.12, 0.16], [-0.3, 0.42]],
+		[[0.12, 0.16], [0.46, 0.16], [0.3, 0.42]],
+		[[-0.07, -0.02], [0.07, -0.02], [0.0, 0.12]],
+		[[-0.55, -0.12], [-0.38, -0.2], [-0.28, -0.12], [-0.16, -0.24], [0.0, -0.14], [0.16, -0.24], [0.28, -0.12], [0.38, -0.2], [0.55, -0.12],
+			[0.4, -0.4], [0.18, -0.48], [0.1, -0.36], [-0.1, -0.36], [-0.18, -0.48], [-0.4, -0.4]],
+	]
+	for shp in shapes:
+		var poly := PackedVector2Array()
+		for p in shp:
+			poly.append(Vector2(p[0], p[1]))
+		var tri := Geometry2D.triangulate_polygon(poly)
+		for idx in tri:
+			var p2: Vector2 = poly[idx]
+			var yy := p2.y * 0.7
+			var zz := sqrt(maxf(0.0, 1.0 - p2.x * p2.x - p2.y * p2.y)) * 0.97 + 0.02
+			fs.set_normal(Vector3(0, 0, 1))
+			fs.add_vertex(Vector3(p2.x, yy + 0.7, zz))
+	pumpkin_face = fs.commit()
+	pumpkin_mat = StandardMaterial3D.new()
+	pumpkin_mat.albedo_color = Color(0.95, 0.42, 0.06)
+	pumpkin_mat.roughness = 0.65
+	pumpkin_mat.emission_enabled = true
+	pumpkin_mat.emission = Color(1.0, 0.35, 0.05)
+	pumpkin_mat.emission_energy_multiplier = 0.06
+	pumpkin_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	pumpkin_dull_mat = pumpkin_mat.duplicate()
+	pumpkin_dull_mat.albedo_color = Color(0.85, 0.4, 0.08)
+	pumpkin_dull_mat.emission_enabled = false
+	face_mat = StandardMaterial3D.new()
+	face_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	face_mat.albedo_color = Color(2.2, 1.5, 0.45)
+	face_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	stem_mesh = CylinderMesh.new(); stem_mesh.top_radius = 0.05; stem_mesh.bottom_radius = 0.09; stem_mesh.height = 0.3; stem_mesh.radial_segments = 8
+	stem_mat = StandardMaterial3D.new(); stem_mat.albedo_color = Color(0.22, 0.25, 0.08); stem_mat.roughness = 0.9
+	stone_mat = StandardMaterial3D.new(); stone_mat.albedo_color = Color(0.32, 0.3, 0.36); stone_mat.roughness = 0.95
+	shrine_flame_mat = _glow_mat(Color(1.0, 0.7, 0.3), 5.0)
+
+
+func _make_pumpkin(lit: bool) -> Node3D:
+	var root := Node3D.new()
+	var body := MeshInstance3D.new(); body.mesh = pumpkin_body; body.material_override = pumpkin_mat if lit else pumpkin_dull_mat
+	root.add_child(body)
+	var stem := MeshInstance3D.new(); stem.mesh = stem_mesh; stem.material_override = stem_mat
+	stem.position = Vector3(0.03, 1.5, 0); stem.rotation.z = 0.25
+	root.add_child(stem)
+	if lit:
+		var face := MeshInstance3D.new(); face.mesh = pumpkin_face; face.material_override = face_mat
+		face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		root.add_child(face)
+		if quality >= 1:
+			var l := OmniLight3D.new()
+			l.light_color = Color(1.0, 0.55, 0.15); l.light_energy = 1.4; l.omni_range = 4.0
+			l.position = Vector3(0, 0.9, 0.9)
+			root.add_child(l)
+	return root
+
+
+func _make_shrine() -> Dictionary:
+	var root := Node3D.new()
+	var base := MeshInstance3D.new(); var bm := CylinderMesh.new(); bm.top_radius = 0.55; bm.bottom_radius = 0.75; bm.height = 0.35; bm.radial_segments = 8
+	base.mesh = bm; base.material_override = stone_mat; base.position.y = 0.17
+	root.add_child(base)
+	var pillar := MeshInstance3D.new(); var pm := CylinderMesh.new(); pm.top_radius = 0.28; pm.bottom_radius = 0.38; pm.height = 1.3; pm.radial_segments = 8
+	pillar.mesh = pm; pillar.material_override = stone_mat; pillar.position.y = 1.0
+	root.add_child(pillar)
+	var bowl := MeshInstance3D.new(); var bw := CylinderMesh.new(); bw.top_radius = 0.6; bw.bottom_radius = 0.25; bw.height = 0.3; bw.radial_segments = 12
+	bowl.mesh = bw; bowl.material_override = stone_mat; bowl.position.y = 1.78
+	root.add_child(bowl)
+	var flame := MeshInstance3D.new(); var fm := SphereMesh.new(); fm.radius = 0.32; fm.height = 0.8; fm.radial_segments = 12; fm.rings = 6
+	flame.mesh = fm; flame.material_override = shrine_flame_mat; flame.position.y = 2.15
+	flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	flame.scale = Vector3.ONE * 0.25
+	root.add_child(flame)
+	var light := OmniLight3D.new()
+	light.light_color = Color(0.55, 0.65, 1.0); light.light_energy = 0.9; light.omni_range = 5.0
+	light.position.y = 2.3
+	root.add_child(light)
+	return {"node": root, "flame": flame, "light": light}
+
+
+func region_at(p: Vector2) -> int:
+	if p.length() < 24.0:
+		return 0
+	var n := reg_noise.get_noise_2d(p.x, p.y)
+	if n > 0.22:
+		return 1
+	if n < -0.22:
+		return 2
+	if reg_noise.get_noise_2d(p.x + 731.0, p.y - 417.0) > 0.25:
+		return 3
+	return 0
+
+
+func _update_shrines(dt: float) -> void:
+	shrine_prog = 0.0
+	for s in shrines:
+		if s.lit:
+			continue
+		var near: bool = s.pos.distance_squared_to(ppos) < 2.8 * 2.8 and dying <= 0
+		if near:
+			s.prog = minf(1.0, s.prog + dt / Data.SHRINE_TIME)
+			shrine_prog = maxf(shrine_prog, s.prog)
+			s.fx_t = s.get("fx_t", 0.0) - dt
+			if s.fx_t <= 0:
+				s.fx_t = 0.45
+				fx_ring(s.pos, 2.8, Color("ffd166"))
+			if s.prog >= 1.0:
+				_light_shrine(s)
+		else:
+			s.prog = maxf(0.0, s.prog - dt * 0.4)
+		if is_instance_valid(s.flame):
+			s.flame.scale = Vector3.ONE * (0.25 + s.prog * 0.75)
+
+
+func _light_shrine(s: Dictionary) -> void:
+	s.lit = true
+	s.prog = 1.0
+	map_objs[s.key] = "lit"
+	if is_instance_valid(s.light):
+		s.light.light_color = Color(1.0, 0.7, 0.35)
+		s.light.light_energy = 3.0
+		s.light.omni_range = 9.0
+	if is_instance_valid(s.flame):
+		s.flame.scale = Vector3.ONE
+	var t: Dictionary = Save.data.totals
+	t.shrines = int(t.get("shrines", 0)) + 1
+	Save.unlock("ACH_SHRINE")
+	if t.shrines >= 25:
+		Save.unlock("ACH_SHRINES_25")
+	aoe(s.pos, 7.0, 200.0, 10.0, Color("ffd166"), null)
+	burst(s.pos, 2.2, Color("ffd166"), 2.5)
+	fx_light(s.pos, Color("ffd166"), 10.0, 0.9)
+	Sfx.play("revive")
+	Controls.rumble(0.3, 0.3, 0.3)
+	var b: Dictionary = Data.BLESSINGS.pick_random()
+	match b.id:
+		"warmth":
+			P.hp = P.max_hp
+		"insight":
+			add_xp(P.xp_next - P.xp)
+		"fury":
+			fury_t = 30.0
+		"haste":
+			haste_t = 30.0
+	banner.emit(tr(b.name).to_upper(), tr(b.desc), Color("ffd166"))
+	var mem: Array = Save.data.memories
+	if mem.size() < Data.MEMORIES.size():
+		var idx := mem.size()
+		mem.append(idx)
+		toast.emit(tr("Memory recovered: %s") % tr(Data.MEMORIES[idx].title), Color("b9a7ff"))
+		if mem.size() >= Data.MEMORIES.size():
+			Save.unlock("ACH_MEMORIES")
+		set_meta("new_memories", int(get_meta("new_memories", 0)) + 1)
+		Save.persist()
+
+
+func _smash_pumpkin(p) -> void:
+	map_objs[p.key] = "used"
+	var t: Dictionary = Save.data.totals
+	t.pumpkins = int(t.get("pumpkins", 0)) + 1
+	if t.pumpkins >= 100:
+		Save.unlock("ACH_PUMPKINS")
+	burst(p.pos, 0.8, Color("ff8a2a"), 1.4)
+	fx_light(p.pos, Color("ff8a2a"), 4.0, 0.4)
+	Sfx.play("explode")
+	Controls.rumble(0.2, 0.3, 0.12)
+	if randf() < 0.15:
+		toast.emit(tr("Trick!"), Color("b38cff"))
+		for i in 8:
+			var a := float(i) / 8.0 * TAU
+			spawn_enemy("bat", ppos + Vector2(cos(a), sin(a)) * 7.0)
+		return
+	toast.emit(tr("Treat!"), Color("ff9a3d"))
+	var r: float = randf() * float(P.luck)
+	if r < 0.45:
+		for i in randi_range(2, 4):
+			spawn_pickup("coin", p.pos + Vector2(randf_range(-1, 1), randf_range(-1, 1)))
+	elif r < 0.65:
+		spawn_pickup("heart", p.pos)
+	elif r < 0.77:
+		spawn_pickup("magnet", p.pos)
+	elif r < 0.87:
+		spawn_pickup("bomb", p.pos)
+	elif r < 0.97:
+		drop_gem(p.pos, 8.0 + time / 20.0)
+	else:
+		spawn_pickup("chest", p.pos)
+
+
+func _update_atmosphere(dt: float) -> void:
+	var want := 1.0 if (time >= 600.0 and (not won or endless)) else 0.0
+	if mode != "run":
+		want = 0.0
+	if absf(blood - want) < 0.001:
+		return
+	blood = move_toward(blood, want, dt / 12.0)
+	moon.light_color = Color(0.55, 0.6, 1.0).lerp(Color(1.0, 0.3, 0.25), blood)
+	moon.light_energy = lerpf(0.5, 0.65, blood)
+	env.fog_light_color = Color(0.05, 0.04, 0.1).lerp(Color(0.1, 0.025, 0.04), blood)
+	env.volumetric_fog_albedo = Color(0.55, 0.5, 0.8).lerp(Color(0.75, 0.4, 0.45), blood)
+	env.ambient_light_color = Color(0.3, 0.3, 0.5).lerp(Color(0.42, 0.22, 0.25), blood)
+
+
+var region_dwell := 0.0
+var region_toast_t := 0.0
+
+
+func _check_region(dt: float) -> void:
+	## Announce a region only after you have stayed in it a moment, so walking a border doesn't spam names.
+	region_toast_t -= dt
+	var r := region_at(ppos)
+	if cur_region == -1:
+		cur_region = r
+	if r == cur_region:
+		region_dwell = 0.0
+		return
+	region_dwell += dt
+	if region_dwell >= 2.5:
+		cur_region = r
+		region_dwell = 0.0
+		if region_toast_t <= 0:
+			region_toast_t = 15.0
+			toast.emit(tr(Data.REGIONS[r].name), Color(Data.REGIONS[r].color))
 
 
 # ================================================================= effects
@@ -1770,6 +2226,8 @@ func fx_ring(at: Vector2, radius: float, color: Color) -> void:
 
 
 func fx_light(at: Vector2, color: Color, energy: float, life: float) -> void:
+	if Save.setting("reduce_flash"):
+		energy *= 0.35
 	for f in fx_lights:
 		if f[1] <= 0:
 			var l: OmniLight3D = f[0]
@@ -1943,6 +2401,9 @@ func sync_visuals(dt: float) -> void:
 	for p in pickups:
 		if p.node == null:
 			continue
+		if p.kind == "pumpkin":
+			p.node.position = Vector3(p.pos.x, 0.0, p.pos.y)
+			continue
 		p.node.position = Vector3(p.pos.x, 0.3 + sin(p.t * 3.0) * 0.1 if p.kind != "chest" else 0.0, p.pos.y)
 		if p.kind != "chest":
 			p.node.rotation.y = p.t * 2.0
@@ -2043,10 +2504,18 @@ func _bot_move() -> Vector2:
 		if d2 < R * R:
 			var d := sqrt(d2)
 			mv += dv / maxf(d, 0.01) * (R - d) / R * 2.5
+	var danger := false
 	for b in bullets:
 		var dv := ppos - b.pos
 		if dv.length_squared() < 5.0:
 			mv += dv.normalized() * 1.5
+			if dv.length_squared() < 1.4:
+				danger = true
+	for e in bosses:
+		if e.state == "dash" and e.pos.distance_squared_to(ppos) < 9.0:
+			danger = true
+	if danger and dash_cd <= 0:
+		dash_req = true
 	var best = null
 	var bd := 144.0
 	for g in gems:
@@ -2059,6 +2528,15 @@ func _bot_move() -> Vector2:
 		if d < bd:
 			bd = d
 			best = p.pos
-	if best != null:
+	var at_shrine := false
+	for s in shrines:
+		if not s.lit:
+			var d: float = s.pos.distance_squared_to(ppos)
+			if d < 4.0:
+				at_shrine = true
+			elif d < 225.0 and d < bd:
+				bd = d
+				best = s.pos
+	if best != null and not at_shrine:
 		mv += (best - ppos).normalized() * 0.8
 	return mv.normalized() if mv.length() > 0.05 else Vector2.ZERO
