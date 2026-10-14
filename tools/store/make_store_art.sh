@@ -21,7 +21,7 @@ convert $T/main.png \( $OUT/logo.png -resize 640x \) -gravity northeast -geometr
 convert $WIDE -resize 920x -gravity center -extent 920x430 $T/head.png
 convert $T/head.png \( $OUT/logo.png -resize 470x \) -gravity east -geometry +24-10 -composite $OUT/capsule_header_920x430.png
 convert $WIDE -resize 462x -gravity center -extent 462x174 $T/small.png
-convert $T/small.png \( $OUT/logo.png -resize 270x \) -gravity east -geometry +8+0 -composite $OUT/capsule_small_462x174.png
+convert $T/small.png -modulate 60 \( $OUT/logo.png -resize 430x165 \) -gravity center -geometry +0+4 -composite $OUT/capsule_small_462x174.png
 convert $WIDE -resize 1438x810^ -gravity center -extent 1438x810 -modulate 70 $OUT/page_background_1438x810.png
 # ---- tall capsules (logo top)
 convert $TALL -resize 748x896^ -gravity center -extent 748x896 $T/vert.png

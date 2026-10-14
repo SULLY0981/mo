@@ -63,7 +63,9 @@ godot --headless --export-release "Linux"   build/linux/TheLastLantern.x86_64
    | `library_capsule_600x900.png` | Library capsule |
    | `library_hero_3840x1240.png` | Library hero |
    | `library_logo_1280x720.png` | Library logo |
+   | `community_icon_184x184.png` | Community icon |
    | `screenshots/*.png` | Store screenshots (1920×1080) |
+   | `trailer.mp4` | Gameplay trailer (rebuild with `tools/store/make_trailer.sh`) |
 
 5. **Upload the builds** with SteamPipe (steamcmd from the Steamworks SDK). Use one depot for `build/windows` and one for `build/linux`. Set the launch options to `TheLastLantern.exe` (Windows) and `TheLastLantern.x86_64` (Linux).
 6. **Put the "Coming Soon" page up early.** It must be live for at least 2 weeks before release, and **wishlists before launch are the biggest predictor of sales**.
@@ -93,6 +95,7 @@ blender -b -P tools/blender/render_keyart.py -- /tmp/wide.png 2464 1412 64 wide
 blender -b -P tools/blender/render_keyart.py -- /tmp/tall.png 1200 1440 64 tall
 blender -b -P tools/blender/render_keyart.py -- /tmp/hero.png 3840 1240 40 hero
 tools/store/make_store_art.sh /tmp/wide.png /tmp/tall.png /tmp/hero.png <folder with Cinzel TTFs>
+tools/store/make_trailer.sh <folder with Cinzel/Alegreya TTFs>   # records gameplay clips + cuts trailer
 ```
 
 ## Testing

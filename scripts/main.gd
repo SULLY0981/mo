@@ -189,10 +189,11 @@ func _process(_delta: float) -> void:
 		return
 	var steps := 12 if shots_dir != "" else 30
 	if shots_dir == "trailer":
-		world.step(1.0 / 60.0)
+		var dt := minf(_delta, 1.0 / 30.0)
+		world.step(dt)
 		if world.P.hp < 30:
 			world.P.hp = world.P.max_hp
-		world.sync_visuals(1.0 / 60.0)
+		world.sync_visuals(dt)
 		test_log_t += 1
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--snap=") and int(test_log_t) == 150:
