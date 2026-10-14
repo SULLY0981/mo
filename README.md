@@ -12,14 +12,21 @@ You are the last lantern-bearer in an endless night. Shadow creatures close in f
 
 - **Real-time lighting is the core of the game.** Your lantern is a dynamic light that casts shadows through volumetric fog. Enemies come out of the darkness with glowing eyes, and those inside your light take bonus damage.
 - **7 weapons** with 6 levels each: Ember Bolt, Sun Halo, Lantern Pulse, Storm Arc, Moon Scythe, Lantern Seeds, Frost Shards.
-- **12 relics (passives)**, plus chests, elites, horde events, and pickups (heal, magnet, flashbang).
+- **Weapon Awakening**: max a weapon while holding its paired relic, and the next chest awakens it (+60% damage, +25% fire rate, gold icon). The level-up cards show which relic awakens which weapon.
+- **13 relics (passives)**, plus chests, elites, horde events, and pickups (heal, magnet, flashbang).
+- **Dash** (Space / A / RB) with a short invulnerability window. The Cinder Step relic makes it burn enemies.
+- **A Halloween world** in four regions that blend into each other: the Graveyard, the Pumpkin Fields, the Dead Woods and the Chapel Ruins. A **Blood Moon** rises in the final hour.
+- **Jack-o'-lanterns** you can smash for a Treat (loot) or a Trick (a bat swarm). **Gourdlings**, a hopping jack-o'-lantern enemy, light a fuse and explode, which you can dash out of.
+- **Lantern shrines**: stand beside one to kindle it for a blessing (Warmth, Insight, Fury or Haste).
+- **A story**: an intro, 12 memories of the fallen Order recovered from shrines, and an ending at the first dawn. The **Journal** keeps them.
 - **7 playable Keepers**, each with a different starting weapon and stats. Six of them unlock through achievements.
 - **4 boss fights**: the Ashen Warden, the Hollow Choir, the Warden reborn, and the Hollow King. Bosses use telegraphed dashes, bullet rings, spirals, and summons.
 - **Meta-progression**: the Sanctum shop spends Embers earned in each run on permanent upgrades.
-- **14 achievements**, already wired to Steam.
+- **19 achievements**, already wired to Steam.
 - **Endless mode** after the victory.
-- **Full controller support**, so it is ready for Steam Deck.
-- Settings for SFX/music volume, fullscreen, V-Sync, screen shake, damage numbers, and **graphics quality (Low/Medium/High)** for low-end PCs and Steam Deck.
+- **Full controller support**, so it is ready for Steam Deck: rebinding for keyboard and controller, vibration and strength, stick deadzone, and Xbox / PlayStation / Nintendo button prompts that switch automatically.
+- **Languages**: the game picks the Steam or system language automatically, and it can be changed in Settings. Translations live in `locale/<code>.json`.
+- Settings tabs (General / Audio / Video / Controls) for SFX/music volume, fullscreen, V-Sync, screen shake, damage numbers, reduce flashing, pause when unfocused, FPS counter, and **graphics quality (Low/Medium/High)** for low-end PCs and Steam Deck.
 - **Every asset is original and generated from scripts in this repo.** The models come from Blender, the music and sound effects are synthesized, and the fonts are SIL Open Font License. There is nothing to license and nothing to get flagged.
 
 ## Play / edit it
@@ -28,7 +35,7 @@ You are the last lantern-bearer in an endless night. Shadow creatures close in f
 2. In Godot, choose **Import** and pick this folder's `project.godot`.
 3. Press **F5** to play.
 
-Controls: **WASD / arrow keys / left stick** to move. Weapons fire automatically. **Esc / P / Start** pauses. **1–4** pick level-up cards. **R / X** rerolls. **F11** toggles fullscreen.
+Controls: **WASD / arrow keys / left stick** to move. **Space / A / RB** dashes. Weapons fire automatically. **Esc / P / Start** pauses. **1–4** pick level-up cards. **R / X** rerolls. **F11** toggles fullscreen. Everything except the arrow keys and the stick can be rebound in Settings → Controls.
 
 ## Build the game for Steam
 
@@ -49,7 +56,7 @@ godot --headless --export-release "Linux"   build/linux/TheLastLantern.x86_64
 1. **Steamworks account.** Sign up at <https://partner.steamgames.com>. The fee is **$100 per game**, recouped after $1,000 in sales.
 2. **Steam achievements: install GodotSteam.** In Godot, open the **AssetLib** tab, search **"GodotSteam"**, and install the GDExtension version for Godot 4.3. Put a `steam_appid.txt` containing your App ID next to the exported `.exe` for local testing. `scripts/save.gd` already detects GodotSteam and reports achievements. Without it, the game simply runs without Steam.
 3. **Create the achievements** in Steamworks → *Stats & Achievements*, using these **exact API names**:
-   `ACH_FIRST_NIGHT, ACH_SURVIVE_5, ACH_SURVIVE_10, ACH_BOSS, ACH_DAWN, ACH_ENDLESS_20, ACH_KILLS_1000, ACH_KILLS_TOTAL, ACH_LEVEL_30, ACH_MAX_WEAPON, ACH_ARSENAL, ACH_RICH, ACH_NO_HIT_3, ACH_ALL_CHARS`
+   `ACH_FIRST_NIGHT, ACH_SURVIVE_5, ACH_SURVIVE_10, ACH_BOSS, ACH_DAWN, ACH_ENDLESS_20, ACH_KILLS_1000, ACH_KILLS_TOTAL, ACH_LEVEL_30, ACH_MAX_WEAPON, ACH_ARSENAL, ACH_RICH, ACH_NO_HIT_3, ACH_ALL_CHARS, ACH_SHRINE, ACH_SHRINES_25, ACH_MEMORIES, ACH_PUMPKINS, ACH_AWAKEN`
    The display names and descriptions are in `scripts/data.gd` → `ACHIEVEMENTS`.
 4. **Store art is already made.** It's in the `store/` folder, rendered in Blender and sized exactly as Steam requires:
 
@@ -71,6 +78,20 @@ godot --headless --export-release "Linux"   build/linux/TheLastLantern.x86_64
 6. **Put the "Coming Soon" page up early.** It must be live for at least 2 weeks before release, and **wishlists before launch are the biggest predictor of sales**.
 7. **Price:** this genre typically sells for **$2.99–$4.99**. A 10–20% launch discount helps.
 8. Before launch, change `application/company_name` in `export_presets.cfg` to your studio name.
+
+### Halloween timing (October 31)
+
+Steam's rules for a **new** developer account make a full Steam release on Halloween impossible if the account is created in mid-October:
+
+- After you pay the $100 app fee, there is a **30-day wait** before your first game can be released.
+- The store page must be public as **"Coming Soon" for at least 2 weeks**.
+- Valve reviews the store page and the build, which takes a few business days each.
+
+What *can* happen by Halloween:
+
+1. **Steam "Coming Soon" page live** with the trailer and screenshots, collecting wishlists. This is the most valuable thing to do now.
+2. **Free demo or full release on itch.io** on October 31, linking to the Steam page. Export with the Windows preset and upload the `build/windows` folder as a zip.
+3. **Steam launch** about 30 days after paying the fee (late November), or during the Steam Winter Sale window. Halloween content still fits a "spooky season" launch, and a Halloween-themed Next Fest demo is an option next year.
 
 ### Marketing that works for this genre
 - Short gameplay clips of the late-game chaos (hundreds of enemies, the lantern light, boss fights) on TikTok, YouTube Shorts, and Reddit (r/IndieGaming, r/roguelites, r/godot).

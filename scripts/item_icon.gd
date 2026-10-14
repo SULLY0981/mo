@@ -7,11 +7,13 @@ var level := 0
 var max_level := 0
 var show_pips := false
 var glow := true
+var awake := false
 
 
-func setup(item_id: String, lvl := 0, show_level := false) -> ItemIcon:
+func setup(item_id: String, lvl := 0, show_level := false, awakened := false) -> ItemIcon:
 	id = item_id
 	level = lvl
+	awake = awakened
 	var def := Data.item_def(id)
 	max_level = int(def.get("max", 0))
 	show_pips = show_level
@@ -27,8 +29,8 @@ func _draw() -> void:
 	var s := minf(size.x, size.y - (8.0 if show_pips else 0.0))
 	var box := StyleBoxFlat.new()
 	box.bg_color = Color(0.09, 0.07, 0.14, 0.95)
-	box.border_color = Color(col, 0.85)
-	box.set_border_width_all(maxi(2, int(s / 26)))
+	box.border_color = Color("ffe08a") if awake else Color(col, 0.85)
+	box.set_border_width_all(maxi(3, int(s / 16)) if awake else maxi(2, int(s / 26)))
 	box.set_corner_radius_all(int(s * 0.2))
 	box.shadow_color = Color(col, 0.25)
 	box.shadow_size = int(s * 0.12)
@@ -38,6 +40,15 @@ func _draw() -> void:
 	if glow:
 		_glyph(c, k, Color(col, 0.22), 2.4)
 	_glyph(c, k, col, 1.0)
+	if awake:
+		# small gold star in the corner
+		var sc := Vector2(s - 9 * k, 9 * k)
+		var pts := PackedVector2Array()
+		for i in 10:
+			var a := -PI / 2 + i * PI / 5
+			var rr := (7.0 if i % 2 == 0 else 3.0) * k
+			pts.append(sc + Vector2(cos(a), sin(a)) * rr)
+		draw_colored_polygon(pts, Color("ffe08a"))
 	if show_pips and max_level > 0:
 		var pw := (s - 4) / max_level
 		for i in max_level:

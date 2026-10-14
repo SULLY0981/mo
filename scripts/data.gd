@@ -11,6 +11,7 @@ const ENEMIES := {
 	"splitter": {"hp": 28.0,  "speed": 1.95, "r": 0.45, "dmg": 9.0, "xp": 2.0, "color": "ffb52e", "splits": true},
 	"mite":     {"hp": 7.0,   "speed": 3.2, "r": 0.28, "dmg": 5.0,  "xp": 1.0, "color": "ffb52e"},
 	"ghoul":    {"hp": 110.0, "speed": 1.85, "r": 0.52, "dmg": 18.0, "xp": 6.0, "color": "ff6a1a", "heavy": 0.5},
+	"gourd":    {"hp": 32.0,  "speed": 2.7, "r": 0.45, "dmg": 20.0, "xp": 3.0, "color": "ff8a2a", "fuse": true},
 }
 
 const BOSSES := {
@@ -64,6 +65,24 @@ const PASSIVES := {
 	"light":   {"name": "Bright Oil",  "color": "fff3b0", "desc": "+15% Light Radius. Enemies in your light take +15% damage.", "max": 3},
 	"cinder":  {"name": "Cinder Step", "color": "ff7a3d", "desc": "Your dash scorches enemies in its path and recharges 15% faster.", "max": 3},
 }
+
+# Nights: difficulty levels. Winning Night N unlocks N+1. Effects stack.
+const NIGHTS := [
+	"The night as you know it.",
+	"Shadows endure: enemies have +30% health.",
+	"The dark hastens: enemies move 12% faster.",
+	"Tyrants rise: bosses have +50% health and elites come more often.",
+	"The longest night: healing is halved and the Blood Moon never sets.",
+]
+const NIGHT_HP := 1.3
+const NIGHT_SPEED := 1.12
+const NIGHT_BOSS_HP := 1.5
+const NIGHT_REWARD := 0.25  # extra Embers per Night above the first
+
+# Awakening: a maxed weapon + its paired relic -> the next chest awakens it.
+const AWAKEN := {"bolt": "might", "halo": "light", "pulse": "reach", "arc": "haste", "scythe": "swift", "mines": "luck", "frost": "plating"}
+const AWAKEN_DMG := 1.4
+const AWAKEN_RATE := 1.15
 
 # Dash: seconds of cooldown, speed while dashing (m/s), and duration.
 const DASH_CD := 3.2
@@ -119,6 +138,8 @@ const ACHIEVEMENTS := [
 	{"id": "ACH_SHRINES_25", "name": "Keeper of Shrines", "desc": "Light 25 lantern shrines in total."},
 	{"id": "ACH_MEMORIES", "name": "Keeper of Memory", "desc": "Recover every memory of the Order."},
 	{"id": "ACH_PUMPKINS", "name": "Trick or Treat", "desc": "Smash 100 jack-o'-lanterns."},
+	{"id": "ACH_AWAKEN", "name": "Awakening", "desc": "Awaken a weapon with its paired relic."},
+	{"id": "ACH_NIGHT_5", "name": "The Longest Night", "desc": "Bring the dawn on Night 5."},
 ]
 
 # ---------------------------------------------------------------- map

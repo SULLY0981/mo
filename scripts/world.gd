@@ -89,6 +89,7 @@ class Weapon:
 	var orb_nodes: Array = []
 	var second := 0.0
 	var rot := 0.0
+	var awake := false
 
 class Pickup:
 	var kind := ""
@@ -152,6 +153,7 @@ var dash_cd := 0.0
 var dash_dir := Vector2.ZERO
 var dash_req := false
 var dash_burn_t := 0.0
+var night := 1
 var maxpow_acc := 0
 var maxpow_last := -99.0
 
@@ -553,6 +555,12 @@ func _pool_get(kind: String) -> Node3D:
 		"pumpkin":
 			node = _make_pumpkin(true)
 			node.scale = Vector3.ONE * 0.55
+		"gourd":
+			node = Node3D.new()
+			var pk := _make_pumpkin(true, false)
+			pk.scale = Vector3.ONE * 0.5
+			pk.rotation.y = PI  # carved face forward (-Z)
+			node.add_child(pk)
 		_:
 			node = _spawn_model(kind)
 			for mi in node.find_children("*", "MeshInstance3D", true, false):
@@ -582,9 +590,18 @@ func setup_menu(c: String) -> void:
 	_update_chunks(true)
 
 
-func start_run(c: String) -> void:
+func heal_mult() -> float:
+	return 0.5 if night >= 5 else 1.0
+
+
+func night_reward() -> float:
+	return 1.0 + Data.NIGHT_REWARD * (night - 1)
+
+
+func start_run(c: String, n := 1) -> void:
 	mode = "run"
 	char_id = c
+	night = clampi(n, 1, Data.NIGHTS.size())
 	map_seed = randi() % 100000
 	reg_noise.seed = map_seed
 	_tint_player(c)
@@ -688,7 +705,7 @@ func step(dt: float) -> void:
 			pface = mv.normalized()
 	iframe -= dt
 	if P.hp > 0 and P.hp < P.max_hp:
-		P.hp = minf(P.max_hp, P.hp + P.regen * dt)
+		P.hp = minf(P.max_hp, P.hp + P.regen * dt * heal_mult())
 	if not won or endless:
 		_director(dt)
 	_build_grid()
@@ -696,7 +713,7 @@ func step(dt: float) -> void:
 	haste_t -= dt
 	if dying <= 0:
 		for w in weapons:
-			_weapon_update(w, dt * (1.3 if haste_t > 0 else 1.0))
+			_weapon_update(w, dt * (1.3 if haste_t > 0 else 1.0) * (Data.AWAKEN_RATE if w.awake else 1.0))
 	_update_enemies(dt)
 	_update_projs(dt)
 	_update_bullets(dt)
@@ -846,9 +863,9 @@ func spawn_enemy(type: String, at = null, elite := false) -> Enemy:
 	e.type = type
 	e.pos = at if at != null else _spawn_point()
 	e.r = T.r * (1.45 if elite else 1.0)
-	e.hp = T.hp * _hp_scale() * (8.0 if elite else 1.0)
+	e.hp = T.hp * _hp_scale() * (8.0 if elite else 1.0) * (Data.NIGHT_HP if night >= 2 else 1.0)
 	e.max_hp = e.hp
-	e.speed = T.speed * randf_range(0.9, 1.1) * (0.92 if elite else 1.0)
+	e.speed = T.speed * randf_range(0.9, 1.1) * (0.92 if elite else 1.0) * (Data.NIGHT_SPEED if night >= 3 else 1.0)
 	e.dmg = T.dmg * (1 + m * 0.05) * (1.4 if elite else 1.0)
 	e.xp = T.xp * (1 + m * 0.08) * (12.0 if elite else 1.0)
 	e.elite = elite
@@ -876,7 +893,7 @@ func spawn_boss(type: String, mult: float) -> void:
 	e.pos = _spawn_point(0.7)
 	e.r = B.r
 	var hs := _hp_scale() / 4.0 if endless else 1.0
-	e.hp = B.hp * mult * hs
+	e.hp = B.hp * mult * hs * (Data.NIGHT_BOSS_HP if night >= 4 else 1.0)
 	e.max_hp = e.hp
 	e.speed = B.speed
 	e.dmg = B.dmg * (1.3 if mult > 1 else 1.0) * (1.5 if endless else 1.0)
@@ -899,7 +916,8 @@ func spawn_boss(type: String, mult: float) -> void:
 
 func _pick_type(m: float) -> String:
 	var opts := [["wisp", maxf(2, 10 - m * 0.8)], ["bat", 5.0 if m >= 0.75 else 0.0], ["spitter", 2.5 if m >= 2 else 0.0],
-		["brute", 2 + m * 0.25 if m >= 3 else 0.0], ["splitter", 3.0 if m >= 4 else 0.0], ["ghoul", 2 + (m - 7) * 0.6 if m >= 7 else 0.0]]
+		["brute", 2 + m * 0.25 if m >= 3 else 0.0], ["splitter", 3.0 if m >= 4 else 0.0], ["ghoul", 2 + (m - 7) * 0.6 if m >= 7 else 0.0],
+		["gourd", 2.2 if m >= 5 else 0.0]]
 	var total := 0.0
 	for o in opts:
 		total += o[1]
@@ -938,7 +956,7 @@ func _director(dt: float) -> void:
 			spawn_boss(["warden", "choir", "king"].pick_random(), 1.0 + k * 0.5)
 	elite_t -= dt
 	if elite_t <= 0:
-		elite_t = maxf(35.0, 70.0 - m * 3)
+		elite_t = maxf(35.0, 70.0 - m * 3) * (0.6 if night >= 4 else 1.0)
 		spawn_enemy(_pick_type(m), null, true)
 	var target := minf(MAX_ENEMIES, 22 + time * 0.75)
 	var rate := minf(45.0, 1.6 + time / 12.0) * (0.6 if bosses.size() > 0 else 1.0)
@@ -953,7 +971,7 @@ func _director(dt: float) -> void:
 func hurt_enemy(e: Enemy, base: float, kdir: Vector2, kb: float, w: Weapon) -> void:
 	if e.dead:
 		return
-	var dmg: float = base * P.might * (1.5 if fury_t > 0 else 1.0)
+	var dmg: float = base * P.might * (1.5 if fury_t > 0 else 1.0) * (Data.AWAKEN_DMG if w and w.awake else 1.0)
 	if P.light_bonus > 1.0 and e.pos.distance_squared_to(ppos) < pow(P.light * 0.6, 2):
 		dmg *= P.light_bonus
 	var crit: bool = randf() < 0.05 * P.luck
@@ -1330,6 +1348,19 @@ func _update_enemies(dt: float) -> void:
 			if T.get("erratic", false):
 				var wv := sin(e.t * 5 + e.id) * 0.8
 				mv = d + Vector2(-d.y, d.x) * wv
+			if T.get("fuse", false):
+				if e.state == "fuse":
+					sp = 0.0
+					e.st_t -= dt
+					if fmod(e.st_t, 0.16) < dt:
+						e.flash = 0.07
+					if e.st_t <= 0:
+						_gourd_blast(e)
+						continue
+				elif dist < 1.8:
+					e.state = "fuse"
+					e.st_t = 0.75
+					Sfx.play("zap")
 			if T.get("ranged", false):
 				if dist < 6.5:
 					mv = -d
@@ -1553,7 +1584,7 @@ func _collect(p: Pickup) -> void:
 			coins += maxi(1, int(round(p.v * P.greed)))
 			Sfx.play("coin")
 		"heart":
-			P.hp = minf(P.max_hp, P.hp + maxf(30.0, P.max_hp * 0.3))
+			P.hp = minf(P.max_hp, P.hp + maxf(30.0, P.max_hp * 0.3) * heal_mult())
 			Sfx.play("pickup")
 			toast.emit(tr("+HP"), Color("ff5d73"))
 		"magnet":
@@ -1580,7 +1611,26 @@ func upgradables() -> Array:
 	return out
 
 
+func awaken_ready() -> Weapon:
+	## A maxed weapon whose paired relic you hold can be awakened by the next chest.
+	for w in weapons:
+		if not w.awake and w.lvl >= int(Data.WEAPONS[w.id].max) and passives.has(Data.AWAKEN[w.id]):
+			return w
+	return null
+
+
 func _open_chest() -> void:
+	var aw := awaken_ready()
+	if aw:
+		aw.awake = true
+		Save.unlock("ACH_AWAKEN")
+		banner.emit(tr("Awakened!").to_upper(), tr("Awakened %s") % tr(Data.WEAPONS[aw.id].name), Color("ffe08a"))
+		Sfx.play("victory")
+		Controls.rumble(0.5, 0.5, 0.4)
+		burst(ppos, 1.4, Color("ffe08a"), 3.0)
+		fx_light(ppos, Color("ffe08a"), 12.0, 0.9)
+		fx_ring(ppos, 6.0, Color("ffe08a"))
+		return
 	var n := 3 if randf() < 0.1 * P.luck else 1
 	var got := []
 	for i in n:
@@ -1700,7 +1750,11 @@ func end_run(reason: String) -> void:
 	if over:
 		return
 	over = true
-	var bonus := int(floor((floor(time / 10.0) + floor(kills / 25.0) + (400 if won else 0)) * P.greed))
+	var bonus := int(floor((floor(time / 10.0) + floor(kills / 25.0) + (400 if won else 0)) * P.greed * night_reward()))
+	if won:
+		Save.data.nights_won = maxi(int(Save.data.get("nights_won", 0)), night)
+		if night >= Data.NIGHTS.size():
+			Save.unlock("ACH_NIGHT_5")
 	var total := coins + bonus
 	set_meta("earned", total)
 	Save.add_coins(total)
@@ -2010,7 +2064,7 @@ func _build_map_assets() -> void:
 	shrine_flame_mat = _glow_mat(Color(1.0, 0.7, 0.3), 5.0)
 
 
-func _make_pumpkin(lit: bool) -> Node3D:
+func _make_pumpkin(lit: bool, with_light := true) -> Node3D:
 	var root := Node3D.new()
 	var body := MeshInstance3D.new(); body.mesh = pumpkin_body; body.material_override = pumpkin_mat if lit else pumpkin_dull_mat
 	root.add_child(body)
@@ -2021,7 +2075,7 @@ func _make_pumpkin(lit: bool) -> Node3D:
 		var face := MeshInstance3D.new(); face.mesh = pumpkin_face; face.material_override = face_mat
 		face.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(face)
-		if quality >= 1:
+		if quality >= 1 and with_light:
 			var l := OmniLight3D.new()
 			l.light_color = Color(1.0, 0.55, 0.15); l.light_energy = 1.4; l.omni_range = 4.0
 			l.position = Vector3(0, 0.9, 0.9)
@@ -2128,6 +2182,22 @@ func _light_shrine(s: Dictionary) -> void:
 		Save.persist()
 
 
+func _gourd_blast(e: Enemy) -> void:
+	## A Gourdling bursts: hurts you if you're close, and also its neighbours.
+	var R := 2.4
+	fx_ring(e.pos, R, Color("ff8a2a"))
+	fx_light(e.pos, Color("ff8a2a"), 6.0, 0.4)
+	burst(e.pos, 0.8, Color("ff8a2a"), 1.6)
+	Sfx.play("explode")
+	add_shake(0.25)
+	if e.pos.distance_to(ppos) < R:
+		damage_player(e.dmg, "gourd_blast")
+	for o in query(e.pos, R):
+		if o != e and not o.boss and not o.dead:
+			hurt_enemy(o, 30.0, (o.pos - e.pos).normalized(), 6.0, null)
+	kill_enemy(e)
+
+
 func _smash_pumpkin(p) -> void:
 	map_objs[p.key] = "used"
 	var t: Dictionary = Save.data.totals
@@ -2162,7 +2232,7 @@ func _smash_pumpkin(p) -> void:
 
 
 func _update_atmosphere(dt: float) -> void:
-	var want := 1.0 if (time >= 600.0 and (not won or endless)) else 0.0
+	var want := 1.0 if (night >= 5 or (time >= 600.0 and (not won or endless))) else 0.0
 	if mode != "run":
 		want = 0.0
 	if absf(blood - want) < 0.001:
@@ -2332,6 +2402,9 @@ func sync_visuals(dt: float) -> void:
 				n.rotation.z = sin(e.t * 5.0) * 0.07
 			"splitter", "mite":
 				h = absf(sin(e.t * 7.0)) * 0.12
+			"gourd":
+				h = absf(sin(e.t * 5.5)) * 0.35 if e.state != "fuse" else 0.0
+				n.rotation.z = sin(e.t * 40.0) * 0.12 if e.state == "fuse" else 0.0
 			"ghoul":
 				h = absf(sin(e.t * 6.0)) * 0.06
 			"king":

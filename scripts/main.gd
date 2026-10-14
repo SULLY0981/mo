@@ -25,6 +25,11 @@ func _ready() -> void:
 		elif a.begins_with("--shots="):
 			shots_dir = a.substr(8)
 	for a in args:
+		if a.begins_with("--lang="):
+			Loc.apply(a.substr(7))
+			ui.apply_fonts()
+			ui._build_ach_toast()
+	for a in args:
 		if a.begins_with("--trailer="):
 			_trailer(float(a.substr(10)), "--char=" in " ".join(args))
 			return
@@ -40,6 +45,9 @@ func _ready() -> void:
 		for a in args:
 			if a.begins_with("--char="):
 				c = a.substr(7)
+			elif a.begins_with("--night="):
+				Save.data.night = int(a.substr(8))
+				Save.data.nights_won = 5
 		start_run(c)
 		world.set_meta("bot", true)
 		if "--god" in args:
@@ -83,7 +91,7 @@ func start_run(c: String) -> void:
 	world.toast.connect(ui.toast)
 	world.boss_changed.connect(func(active): Sfx.music("boss" if active else "battle"))
 	ui.show_hud(world)  # before start_run, which emits the opening toast
-	world.start_run(c)
+	world.start_run(c, mini(int(Save.data.get("night", 1)), int(Save.data.get("nights_won", 0)) + 1))
 	Sfx.music("battle")
 
 
@@ -225,7 +233,7 @@ func _process(_delta: float) -> void:
 func _print_summary(reason: String) -> void:
 	var ws := []
 	for w in world.weapons:
-		ws.append("%s%d:%d" % [w.id, w.lvl, int(w.dmg_total)])
+		ws.append("%s%d%s:%d" % [w.id, w.lvl, "*" if w.awake else "", int(w.dmg_total)])
 	print("AUTOTEST END reason=%s t=%d lvl=%d kills=%d won=%s coins=%d weapons=%s passives=%s dmg=%s" % [reason, world.time, world.P.level, world.kills, world.won, world.coins, " ".join(ws), world.passives, world.get_meta("dmglog", {})])
 	print("AUTOTEST MAP shrines_lit=%d pumpkins=%d memories=%d" % [Save.data.totals.shrines, Save.data.totals.pumpkins, Save.data.memories.size()])
 

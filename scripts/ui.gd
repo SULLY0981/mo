@@ -282,6 +282,32 @@ func show_chars() -> void:
 	var t := _title(tr("Choose your Keeper"), 60)
 	t.anchor_right = 1; t.offset_top = 50; t.offset_bottom = 130
 	s.add_child(t)
+	var nights_open := mini(int(Save.data.get("nights_won", 0)) + 1, Data.NIGHTS.size())
+	if nights_open > 1:
+		var nbox := VBoxContainer.new(); nbox.add_theme_constant_override("separation", 4)
+		_place(nbox, 1, 0, -680, 160, 580, 130)
+		s.add_child(nbox)
+		var nb := _button("", func(): pass, 580)
+		nb.custom_minimum_size.y = 56
+		var nd := _label("", 22, f_body, MUTED); nd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; nd.custom_minimum_size.x = 580
+		var nref := func():
+			var n := clampi(int(Save.data.get("night", 1)), 1, nights_open)
+			nb.text = "◂  " + tr("Night %d") % n + "  ▸"
+			nd.text = tr(Data.NIGHTS[n - 1]) + ("   " + tr("Embers +%d%%") % int(Data.NIGHT_REWARD * 100 * (n - 1)) if n > 1 else "")
+		var nstep := func(d: int):
+			var n := clampi(int(Save.data.get("night", 1)), 1, nights_open)
+			Save.data.night = (n - 1 + d + nights_open) % nights_open + 1
+			Save.persist()
+			nref.call()
+		nref.call()
+		nb.pressed.connect(func(): nstep.call(1))
+		nb.gui_input.connect(func(ev: InputEvent):
+			if ev.is_action_pressed("ui_left"):
+				Sfx.play("click"); nstep.call(-1); nb.accept_event()
+			elif ev.is_action_pressed("ui_right"):
+				Sfx.play("click"); nstep.call(1); nb.accept_event())
+		nbox.add_child(nb)
+		nbox.add_child(nd)
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 16)
@@ -935,11 +961,13 @@ func _process(_dt: float) -> void:
 		sub_label.text = tr("Dawn in %s") % _fmt_time(Data.DAWN_TIME - world.time)
 	else:
 		sub_label.text = tr("Slay the Hollow King")
+	if world.night > 1:
+		sub_label.text = tr("Night %d") % world.night + "  ·  " + sub_label.text
 	kills_label.text = "☠ %d" % world.kills
 	coins_label.text = "◆ %d" % world.coins
 	var sig := ""
 	for w in world.weapons:
-		sig += "%s%d," % [w.id, w.lvl]
+		sig += "%s%d%s," % [w.id, w.lvl, "*" if w.awake else ""]
 	for id in world.passive_order:
 		sig += "%s%d," % [id, world.passives[id]]
 	if sig != build_sig:
@@ -947,7 +975,7 @@ func _process(_dt: float) -> void:
 		for c in weapon_row.get_children(): c.queue_free()
 		for c in passive_row.get_children(): c.queue_free()
 		for w in world.weapons:
-			var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(58, 66); ic.setup(w.id, w.lvl, true); weapon_row.add_child(ic)
+			var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(58, 66); ic.setup(w.id, w.lvl, true, w.awake); weapon_row.add_child(ic)
 		for id in world.passive_order:
 			var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(44, 52); ic.setup(id, world.passives[id], true); passive_row.add_child(ic)
 	# boss bars
@@ -1063,6 +1091,18 @@ func show_level() -> void:
 		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		dl.custom_minimum_size.x = 290
 		bv.add_child(dl)
+		var hint := ""
+		if is_w and cur + 1 >= int(def.max):
+			hint = tr("Awaken with %s") % tr(Data.PASSIVES[Data.AWAKEN[c.id]].name)
+		elif not is_w:
+			for w in world.weapons:
+				if Data.AWAKEN[w.id] == c.id and not w.awake:
+					hint = tr("Awakens %s") % tr(Data.WEAPONS[w.id].name)
+		if hint != "":
+			var hl := _label(hint, 20, f_bold, Color("ffe08a"), HORIZONTAL_ALIGNMENT_CENTER)
+			hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			hl.custom_minimum_size.x = 290
+			bv.add_child(hl)
 		var spacer := Control.new(); spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL; spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE; bv.add_child(spacer)
 		bv.add_child(_label("" if Controls.using_pad else "[%d]" % (i + 1), 18, f_body, Color(0.45, 0.4, 0.58), HORIZONTAL_ALIGNMENT_CENTER))
 		b.pressed.connect(func(): _pick_card(i))
@@ -1094,7 +1134,7 @@ func _pick_card(i: int) -> void:
 func _build_icons(parent: Control) -> void:
 	var row := HBoxContainer.new(); row.alignment = BoxContainer.ALIGNMENT_CENTER; row.add_theme_constant_override("separation", 8)
 	for w in world.weapons:
-		var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(64, 72); ic.setup(w.id, w.lvl, true); row.add_child(ic)
+		var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(64, 72); ic.setup(w.id, w.lvl, true, w.awake); row.add_child(ic)
 	parent.add_child(row)
 	var row2 := HBoxContainer.new(); row2.alignment = BoxContainer.ALIGNMENT_CENTER; row2.add_theme_constant_override("separation", 8)
 	for id in world.passive_order:
