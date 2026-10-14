@@ -605,7 +605,7 @@ func _portrait(key: String) -> Texture2D:
 	vp.own_world_3d = true
 	vp.msaa_3d = Viewport.MSAA_4X
 	add_child(vp)
-	var model: Node3D = load("res://assets/models/%s.glb" % info[2]).instantiate()
+	var model: Node3D = world._make_witch() if info[2] == "witch" and world and is_instance_valid(world) else load("res://assets/models/%s.glb" % info[2]).instantiate()
 	vp.add_child(model)
 	var box := AABB()
 	var first := true
@@ -689,7 +689,7 @@ func _dialogue_advance() -> void:
 		return
 	dlg_i += 1
 	if dlg_i < dlg_lines.size():
-		Sfx.play("click")
+		Sfx.play("talk")
 		_show_line(dlg_lines[dlg_i])
 		return
 	dialogue_active = false
@@ -1407,7 +1407,7 @@ func show_level() -> void:
 		bv.add_child(dl)
 		var hint := ""
 		if is_w and cur + 1 >= int(def.max):
-			hint = tr("Awaken with %s") % tr(Data.PASSIVES[Data.AWAKEN[c.id]].name)
+			hint = tr("Awaken with %s") % tr(Data.PASSIVES[Data.AWAKEN[c.id]].name) + "\n" + tr(Data.AWAKEN_DESC[c.id])
 		elif not is_w:
 			for w in world.weapons:
 				if Data.AWAKEN[w.id] == c.id and not w.awake:

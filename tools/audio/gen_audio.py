@@ -169,6 +169,43 @@ def sfx():
     print('sfx:', len(S))
 
 
+def halloween_sfx():
+    """Sounds added with the Halloween update. Run with --halloween to (re)build only these."""
+    S = {}
+    # Gourdling fuse: a sizzling hiss that rises in pitch
+    t = t_(0.75)
+    hiss = fft_filter(noise(0.75), lo=3000) * (0.4 + 0.6 * t / 0.75)
+    crackle = (np.random.default_rng(7).random(len(t)) > 0.985) * 1.0
+    S['fuse'] = hiss * 0.6 + fft_filter(crackle, lo=1500) * 0.5 + sweep(600, 1400, 0.75, 'tri') * 0.08
+    # Pumpkin smash: hollow thump + wet crunch
+    thump = sweep(180, 60, 0.35) * dk(0.35, 12)
+    crunch = fft_filter(noise(0.35) * dk(0.35, 16), lo=400, hi=3500)
+    S['smash'] = reverb(thump * 0.9 + crunch * 0.7, 0.6, 0.15)
+    # Shrine kindled: warm bell chord over a soft swell
+    b = np.zeros(int(2.6 * SR))
+    for i, n in enumerate([64, 71, 76, 83]):
+        place(b, additive(note(n), 2.0, 10, 1.3, decay=1.6), i * 0.09)
+    swell = sum(additive(note(n), 2.4, 6, 1.6) for n in (52, 59, 64)) * env(int(2.4 * SR), 0.6, 1.0, 0.7, 1.0) * 0.25
+    place(b, swell, 0.0)
+    S['shrine'] = reverb(b, 2.4, 0.4)
+    # Trick: a wobbling, descending spooky tone
+    t = t_(1.0)
+    f = 520 * (0.55 ** (t / 1.0)) * (1 + 0.06 * np.sin(2 * np.pi * 7 * t))
+    ph = 2 * np.pi * np.cumsum(f) / SR
+    S['trick'] = reverb(np.sin(ph) * env(len(t), 0.05, 0.3, 0.8, 0.4) * 0.8 + np.sin(ph * 1.5) * 0.2 * dk(1.0, 2), 1.4, 0.35)
+    # Awakening: a bright rising shimmer
+    a = np.zeros(int(2.2 * SR))
+    for i, n in enumerate([72, 79, 84, 88, 91, 96]):
+        place(a, additive(note(n), 1.2, 6, 1.0, decay=2.0) * 0.8, i * 0.08)
+    place(a, sweep(300, 2400, 1.0, 'tri') * env(int(1.0 * SR), 0.1, 0.5, 0.5, 0.4) * 0.3, 0)
+    S['awaken'] = reverb(a, 2.0, 0.35)
+    # Dialogue blip
+    S['talk'] = sweep(700, 640, 0.05, 'tri') * dk(0.05, 50) * 0.5
+    for k, x in S.items():
+        write_wav(k, x)
+    print('halloween sfx:', len(S))
+
+
 # ================================================================== MUSIC
 def kick(dur=0.45):
     return sweep(150, 42, dur) * dk(dur, 7) + fft_filter(noise(0.01), hi=3000) * 0.3 if False else sweep(150, 42, dur) * dk(dur, 7)
@@ -293,5 +330,9 @@ def music():
     print('music done')
 
 
-sfx()
-music()
+if '--halloween' in sys.argv:
+    halloween_sfx()
+else:
+    sfx()
+    halloween_sfx()
+    music()

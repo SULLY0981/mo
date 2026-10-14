@@ -2,7 +2,7 @@ extends Node
 ## Sound effect pool and music player with crossfades.
 
 const SFX_NAMES := ["shoot", "hit", "kill", "gem", "coin", "pickup", "levelup", "chest", "hurt", "pulse", "explode", "zap",
-	"freeze", "whoosh", "boss_roar", "boss_shot", "dash", "achievement", "click", "hover", "buy", "deny", "death", "victory", "revive"]
+	"freeze", "whoosh", "boss_roar", "boss_shot", "dash", "achievement", "click", "hover", "buy", "deny", "death", "victory", "revive", "fuse", "smash", "shrine", "trick", "awaken", "talk"]
 const GAPS := {"hit": 0.045, "kill": 0.035, "shoot": 0.06, "gem": 0.03, "zap": 0.07, "explode": 0.06, "pulse": 0.08, "coin": 0.04,
 	"hurt": 0.12, "hover": 0.03, "freeze": 0.08, "boss_shot": 0.1, "whoosh": 0.08}
 const VOL := {"hit": -9.0, "kill": -8.0, "shoot": -10.0, "gem": -11.0, "zap": -7.0, "hover": -12.0, "coin": -6.0, "whoosh": -8.0, "freeze": -6.0}

@@ -39,6 +39,9 @@ func _ready() -> void:
 		if a.begins_with("--mapshots="):
 			_map_shots(a.substr(11))
 			return
+		if a.begins_with("--bestiary="):
+			_bestiary_shot(a.substr(11))
+			return
 		if a.begins_with("--dlgshots="):
 			_dialogue_shots(a.substr(11))
 			return
@@ -383,6 +386,26 @@ func _map_shots(dir: String) -> void:
 			world.spawn_pickup("pumpkin", spot + Vector2(-2.2, 1.0))
 		await get_tree().create_timer(2.5).timeout
 		await _shot(dir, "region_%d" % reg)
+	get_tree().quit()
+
+
+func _bestiary_shot(dir: String) -> void:
+	Save.data = Save._defaults()
+	Save.data.settings.autopause = false
+	Save.data.settings.dialogue = false
+	start_run("keeper")
+	world.set_meta("god", true)
+	await get_tree().create_timer(0.5).timeout
+	world.spawn_boss("witch", 1.0)
+	world.bosses[0].pos = world.ppos + Vector2(-3.5, -2.5)
+	for i in 3:
+		var sc: World.Enemy = world.spawn_enemy("scarecrow", world.ppos + Vector2(3.0 + i * 1.6, -1.5 + i * 0.8))
+		sc.spawn_t = 1.0
+	world.spawn_enemy("gourd", world.ppos + Vector2(1.5, 3.0)).spawn_t = 1.0
+	await get_tree().create_timer(0.6).timeout
+	get_tree().paused = true
+	await get_tree().create_timer(0.3).timeout
+	await _shot(dir, "bestiary")
 	get_tree().quit()
 
 

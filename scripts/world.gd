@@ -545,6 +545,13 @@ func _pool_get(kind: String) -> Node3D:
 		"pumpkin":
 			node = _make_pumpkin(true)
 			node.scale = Vector3.ONE * 0.55
+		"witch":
+			node = Node3D.new()
+			var wm := _make_witch()
+			wm.scale = Vector3.ONE * 1.35
+			node.add_child(wm)
+		"scarecrow":
+			node = _make_scarecrow()
 		"gourd":
 			node = Node3D.new()
 			var pk := _make_pumpkin(true, false)
@@ -1163,7 +1170,7 @@ func spawn_boss(type: String, mult: float) -> void:
 func _pick_type(m: float) -> String:
 	var opts := [["wisp", maxf(2, 10 - m * 0.8)], ["bat", 5.0 if m >= 0.75 else 0.0], ["spitter", 2.5 if m >= 2 else 0.0],
 		["brute", 2 + m * 0.25 if m >= 3 else 0.0], ["splitter", 3.0 if m >= 4 else 0.0], ["ghoul", 2 + (m - 7) * 0.6 if m >= 7 else 0.0],
-		["gourd", 2.2 if m >= 5 else 0.0]]
+		["gourd", 2.2 if m >= 5 else 0.0], ["scarecrow", 1.8 if m >= 6 else 0.0]]
 	var total := 0.0
 	for o in opts:
 		total += o[1]
@@ -1199,7 +1206,7 @@ func _director(dt: float) -> void:
 		var k := int((time - Data.DAWN_TIME) / 120.0)
 		if k >= 1 and not boss_done.has("e%d" % k) and bosses.size() < 3:
 			boss_done["e%d" % k] = true
-			spawn_boss(["warden", "choir", "king"].pick_random(), 1.0 + k * 0.5)
+			spawn_boss(["warden", "choir", "witch", "king"].pick_random(), 1.0 + k * 0.5)
 	elite_t -= dt
 	if elite_t <= 0:
 		elite_t = maxf(35.0, 70.0 - m * 3) * (0.6 if night >= 4 else 1.0)
@@ -1238,8 +1245,22 @@ func hurt_enemy(e: Enemy, base: float, kdir: Vector2, kb: float, w: Weapon) -> v
 	if Save.setting("dmg_nums"):
 		_damage_number(e, dmg, crit)
 	Sfx.play("hit")
-	if e.hp <= 0:
+	if w and w.awake and not _fx_guard:
+		_fx_guard = true
+		match w.id:
+			"bolt":
+				aoe(e.pos, 1.6, base * 0.6, 3.0, Color("ffaa44"), w)
+			"pulse":
+				PP.hp = minf(PP.max_hp, PP.hp + 0.5)
+			"frost":
+				if e.hp <= 0 and e.slow > 0:
+					aoe(e.pos, 2.2, base, 4.0, Color("a0e9ff"), w)
+		_fx_guard = false
+	if e.hp <= 0 and not e.dead:
 		kill_enemy(e)
+
+
+var _fx_guard := false  # stops awakened on-hit effects from triggering themselves
 
 
 func aoe(p: Vector2, r: float, dmg: float, kb: float, color: Color, w: Weapon) -> void:
@@ -1398,9 +1419,9 @@ func _weapon_update(w: Weapon, dt: float) -> void:
 		"halo":
 			var n: int = [2, 3, 3, 4, 4, 6][L - 1] + int(P.amount)
 			var dmg: float = [8, 8, 11, 11, 15, 15][L - 1]
-			var rad: float = [2.2, 2.2, 2.2, 2.5, 2.5, 2.5][L - 1] * P.area
+			var rad: float = [2.2, 2.2, 2.2, 2.5, 2.5, 2.5][L - 1] * P.area * (1.3 if w.awake else 1.0)
 			var spin: float = [2.6, 2.6, 2.6, 2.6, 3.6, 3.6][L - 1]
-			var orb_r := 0.4 * sqrt(P.area)
+			var orb_r := 0.4 * sqrt(P.area) * (1.3 if w.awake else 1.0)
 			w.ang += spin * dt
 			w.orbs.resize(n)
 			for i in n:
@@ -1455,7 +1476,7 @@ func _weapon_update(w: Weapon, dt: float) -> void:
 				hurt_enemy(cur, dmg, Vector2.ZERO, 0.0, w)
 				var best: Enemy = null
 				var bd := 1e12
-				for e in query(cp, 5.0 * P.area):
+				for e in query(cp, 5.0 * P.area * (1.6 if w.awake else 1.0)):
 					if hit.has(e.id) or e.dead:
 						continue
 					var dd := cp.distance_squared_to(e.pos)
@@ -1471,7 +1492,7 @@ func _weapon_update(w: Weapon, dt: float) -> void:
 				return
 			var n: int = [1, 1, 2, 2, 3, 3][L - 1] + int(P.amount)
 			var dmg: float = [18, 26, 26, 26, 34, 46][L - 1]
-			var size := (1.25 if L >= 4 else 1.0) * sqrt(P.area)
+			var size := (1.25 if L >= 4 else 1.0) * sqrt(P.area) * (1.35 if w.awake else 1.0)
 			w.cd = (1.3 if L >= 6 else 1.7) * P.cd
 			var tg := nearest(ppos, 1, 13.0)
 			var base: float = (tg[0].pos - ppos).angle() + randf_range(-0.25, 0.25) if not tg.is_empty() else pface.angle()
@@ -1496,7 +1517,7 @@ func _weapon_update(w: Weapon, dt: float) -> void:
 				var at := ppos + Vector2(cos(a), sin(a)) * randf_range(0.6, 3.3)
 				var p := _proj("mine", w, at, 0, 0, 0.3, [22, 30, 30, 30, 30, 45][L - 1], 1, 6.0, null)
 				p.arm = 0.45
-				p.blast = (2.4 if L >= 3 else 2.0) * P.area
+				p.blast = (2.4 if L >= 3 else 2.0) * P.area * (1.5 if w.awake else 1.0)
 		"frost":
 			w.cd -= dt
 			if w.cd > 0:
@@ -1624,6 +1645,16 @@ func _update_enemies(dt: float) -> void:
 			if T.get("erratic", false):
 				var wv := sin(e.t * 5 + e.id) * 0.8
 				mv = d + Vector2(-d.y, d.x) * wv
+			if T.get("stalker", false):
+				# Frozen inside any lantern's light; fast outside it.
+				var lit := false
+				for i in players.size():
+					var LP: Dictionary = P if i == ci else players[i].P
+					if not player_down(i) and e.pos.distance_to(player_pos(i)) < LP.light * 0.62:
+						lit = true
+				e.state = "still" if lit else ""
+				if lit:
+					sp = 0.0
 			if T.get("fuse", false):
 				if e.state == "fuse":
 					sp = 0.0
@@ -1636,7 +1667,7 @@ func _update_enemies(dt: float) -> void:
 				elif dist < 1.8:
 					e.state = "fuse"
 					e.st_t = 0.75
-					Sfx.play("zap")
+					Sfx.play("fuse")
 			if T.get("ranged", false):
 				if dist < 6.5:
 					mv = -d
@@ -1715,9 +1746,37 @@ func _boss_ai(e: Enemy, dt: float, d: Vector2, dist: float) -> void:
 			for i in k:
 				fire_bullet(e.pos, e.sp_a + i * TAU / k, 5.0, e.dmg * 0.35)
 	e.atk -= dt
+	if e.state == "blink":
+		# Harvest Witch: vanish, then reappear where the warning ring was.
+		e.cur_speed = 0
+		e.st_t -= dt
+		if e.st_t <= 0:
+			burst(e.pos, 1.5, Color(B.color), 2.0)
+			e.pos = e.dash
+			e.state = ""
+			burst(e.pos, 1.5, Color(B.color), 2.0)
+			var n := 14 if enraged else 10
+			for i in n:
+				fire_bullet(e.pos, float(i) / n * TAU, 4.2, e.dmg * 0.4)
+			Sfx.play("trick")
+		return
 	if e.atk <= 0:
 		var mvname: String = B.moves.pick_random()
 		match mvname:
+			"gourds":
+				var tp := player_pos(_nearest_player(e.pos))
+				for i in (8 if enraged else 6):
+					var a := float(i) / 6.0 * TAU + randf()
+					spawn_enemy("gourd", tp + Vector2(cos(a), sin(a)) * 7.0)
+				e.atk = 3.4
+				Sfx.play("trick")
+			"blink":
+				var tp := player_pos(_nearest_player(e.pos))
+				e.dash = tp + Vector2.from_angle(randf() * TAU) * 3.5
+				e.state = "blink"
+				e.st_t = 0.9
+				fx_ring(e.dash, 2.0, Color(B.color))
+				e.atk = 3.0
 			"dash":
 				e.state = "prep"
 				e.st_t = 0.75
@@ -1904,8 +1963,8 @@ func _open_chest() -> void:
 	if aw:
 		aw.awake = true
 		Save.unlock("ACH_AWAKEN")
-		banner.emit(tr("Awakened!").to_upper(), tr("Awakened %s") % tr(Data.WEAPONS[aw.id].name), Color("ffe08a"))
-		Sfx.play("victory")
+		banner.emit(tr("Awakened %s") % tr(Data.WEAPONS[aw.id].name), tr(Data.AWAKEN_DESC[aw.id]), Color("ffe08a"))
+		Sfx.play("awaken")
 		Controls.rumble(0.5, 0.5, 0.4)
 		burst(ppos, 1.4, Color("ffe08a"), 3.0)
 		fx_light(ppos, Color("ffe08a"), 12.0, 0.9)
@@ -2344,6 +2403,70 @@ func _build_map_assets() -> void:
 	shrine_flame_mat = _glow_mat(Color(1.0, 0.7, 0.3), 5.0)
 
 
+func _make_witch() -> Node3D:
+	## The Harvest Witch, built from simple shapes (model faces -Z).
+	var root := Node3D.new()
+	var robe := StandardMaterial3D.new(); robe.albedo_color = Color(0.36, 0.16, 0.48); robe.roughness = 0.9
+	var skin := StandardMaterial3D.new(); skin.albedo_color = Color(0.5, 0.72, 0.42); skin.roughness = 0.8
+	var hat := StandardMaterial3D.new(); hat.albedo_color = Color(0.12, 0.06, 0.16); hat.roughness = 0.85
+	var band := _glow_mat(Color(0.6, 1.0, 0.35), 3.0)
+	var eye := _glow_mat(Color(1.0, 0.65, 0.15), 7.0)
+	var add := func(mesh: Mesh, mat: Material, pos: Vector3, rot := Vector3.ZERO) -> void:
+		var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = mat; mi.position = pos; mi.rotation = rot
+		root.add_child(mi)
+	var body := CylinderMesh.new(); body.top_radius = 0.32; body.bottom_radius = 0.95; body.height = 1.7; body.radial_segments = 12
+	add.call(body, robe, Vector3(0, 0.95, 0))
+	var head := SphereMesh.new(); head.radius = 0.34; head.height = 0.66
+	add.call(head, skin, Vector3(0, 2.0, 0))
+	var e1 := SphereMesh.new(); e1.radius = 0.06; e1.height = 0.12
+	add.call(e1, eye, Vector3(-0.12, 2.04, -0.3))
+	add.call(e1, eye, Vector3(0.12, 2.04, -0.3))
+	var brim := CylinderMesh.new(); brim.top_radius = 0.8; brim.bottom_radius = 0.8; brim.height = 0.05; brim.radial_segments = 16
+	add.call(brim, hat, Vector3(0, 2.28, 0))
+	var bandm := CylinderMesh.new(); bandm.top_radius = 0.4; bandm.bottom_radius = 0.43; bandm.height = 0.12; bandm.radial_segments = 16
+	add.call(bandm, band, Vector3(0, 2.36, 0))
+	var cone := CylinderMesh.new(); cone.top_radius = 0.0; cone.bottom_radius = 0.42; cone.height = 1.1; cone.radial_segments = 12
+	add.call(cone, hat, Vector3(0.08, 2.85, 0.05), Vector3(0.15, 0, -0.25))
+	var pk := _make_pumpkin(true, false)
+	pk.scale = Vector3.ONE * 0.32
+	pk.position = Vector3(0.8, 1.05, -0.25)
+	pk.rotation.y = PI
+	root.add_child(pk)
+	var l := OmniLight3D.new(); l.light_color = Color(0.6, 1.0, 0.4); l.light_energy = 3.0; l.omni_range = 6.5; l.position = Vector3(0, 2.2, -0.6)
+	root.add_child(l)
+	return root
+
+
+func _make_scarecrow() -> Node3D:
+	var root := Node3D.new()
+	var wood := StandardMaterial3D.new(); wood.albedo_color = Color(0.28, 0.18, 0.1); wood.roughness = 0.95
+	var sack := StandardMaterial3D.new(); sack.albedo_color = Color(0.55, 0.44, 0.27); sack.roughness = 1.0
+	var straw := StandardMaterial3D.new(); straw.albedo_color = Color(0.75, 0.62, 0.28); straw.roughness = 1.0
+	var eye := _glow_mat(Color(0.7, 1.0, 0.3), 6.0)
+	var add := func(mesh: Mesh, mat: Material, pos: Vector3, rot := Vector3.ZERO) -> void:
+		var mi := MeshInstance3D.new(); mi.mesh = mesh; mi.material_override = mat; mi.position = pos; mi.rotation = rot
+		root.add_child(mi)
+	var post := CylinderMesh.new(); post.top_radius = 0.06; post.bottom_radius = 0.07; post.height = 1.9; post.radial_segments = 6
+	add.call(post, wood, Vector3(0, 0.95, 0))
+	var arms := BoxMesh.new(); arms.size = Vector3(1.7, 0.09, 0.09)
+	add.call(arms, wood, Vector3(0, 1.4, 0))
+	var body := CylinderMesh.new(); body.top_radius = 0.26; body.bottom_radius = 0.38; body.height = 0.85; body.radial_segments = 8
+	add.call(body, sack, Vector3(0, 1.1, 0))
+	var head := SphereMesh.new(); head.radius = 0.28; head.height = 0.56
+	add.call(head, sack, Vector3(0, 1.8, 0))
+	var e1 := SphereMesh.new(); e1.radius = 0.05; e1.height = 0.1
+	add.call(e1, eye, Vector3(-0.1, 1.84, -0.25))
+	add.call(e1, eye, Vector3(0.1, 1.84, -0.25))
+	var brim := CylinderMesh.new(); brim.top_radius = 0.5; brim.bottom_radius = 0.5; brim.height = 0.04; brim.radial_segments = 12
+	add.call(brim, straw, Vector3(0, 2.02, 0))
+	var cone := CylinderMesh.new(); cone.top_radius = 0.05; cone.bottom_radius = 0.28; cone.height = 0.35; cone.radial_segments = 10
+	add.call(cone, straw, Vector3(0, 2.2, 0))
+	for x in [-0.85, 0.85]:
+		var tuft := CylinderMesh.new(); tuft.top_radius = 0.12; tuft.bottom_radius = 0.02; tuft.height = 0.22; tuft.radial_segments = 6
+		add.call(tuft, straw, Vector3(x, 1.4, 0), Vector3(0, 0, PI / 2 * signf(x)))
+	return root
+
+
 func _make_pumpkin(lit: bool, with_light := true) -> Node3D:
 	var root := Node3D.new()
 	var body := MeshInstance3D.new(); body.mesh = pumpkin_body; body.material_override = pumpkin_mat if lit else pumpkin_dull_mat
@@ -2439,7 +2562,7 @@ func _light_shrine(s: Dictionary) -> void:
 	story.emit("shrine")
 	burst(s.pos, 2.2, Color("ffd166"), 2.5)
 	fx_light(s.pos, Color("ffd166"), 10.0, 0.9)
-	Sfx.play("revive")
+	Sfx.play("shrine")
 	Controls.rumble(0.3, 0.3, 0.3)
 	var b: Dictionary = Data.BLESSINGS.pick_random()
 	var was := ci
@@ -2495,10 +2618,11 @@ func _smash_pumpkin(p) -> void:
 		Save.unlock("ACH_PUMPKINS")
 	burst(p.pos, 0.8, Color("ff8a2a"), 1.4)
 	fx_light(p.pos, Color("ff8a2a"), 4.0, 0.4)
-	Sfx.play("explode")
+	Sfx.play("smash")
 	Controls.rumble(0.2, 0.3, 0.12)
 	if randf() < 0.15:
 		toast.emit(tr("Trick!"), Color("b38cff"))
+		Sfx.play("trick")
 		for i in 8:
 			var a := float(i) / 8.0 * TAU
 			spawn_enemy("bat", ppos + Vector2(cos(a), sin(a)) * 7.0)
@@ -2704,6 +2828,13 @@ func sync_visuals(dt: float) -> void:
 				n.rotation.z = sin(e.t * 5.0) * 0.07
 			"splitter", "mite":
 				h = absf(sin(e.t * 7.0)) * 0.12
+			"witch":
+				h = 0.35 + sin(e.t * 2.0) * 0.15
+				n.rotation.z = sin(e.t * 1.3) * 0.06
+			"scarecrow":
+				var still: bool = e.state == "still"
+				h = 0.0 if still else absf(sin(e.t * 9.0)) * 0.18
+				n.rotation.z = 0.0 if still else sin(e.t * 9.0) * 0.12
 			"gourd":
 				h = absf(sin(e.t * 5.5)) * 0.35 if e.state != "fuse" else 0.0
 				n.rotation.z = sin(e.t * 40.0) * 0.12 if e.state == "fuse" else 0.0

@@ -21,16 +21,19 @@ const ENEMIES := {
 	"mite":     {"hp": 7.0,   "speed": 3.2, "r": 0.28, "dmg": 5.0,  "xp": 1.0, "color": "ffb52e"},
 	"ghoul":    {"hp": 110.0, "speed": 1.85, "r": 0.52, "dmg": 18.0, "xp": 6.0, "color": "ff6a1a", "heavy": 0.5},
 	"gourd":    {"hp": 32.0,  "speed": 2.7, "r": 0.45, "dmg": 20.0, "xp": 3.0, "color": "ff8a2a", "fuse": true},
+	# Scarecrows only move while they are outside your lantern's light.
+	"scarecrow": {"hp": 60.0, "speed": 4.4, "r": 0.5, "dmg": 16.0, "xp": 4.0, "color": "c9a35a", "stalker": true},
 }
 
 const BOSSES := {
 	"warden": {"name": "The Ashen Warden", "hp": 1800.0,  "r": 1.3, "speed": 2.25, "dmg": 24.0, "xp": 120.0, "color": "ff3d6e", "moves": ["dash", "dash", "ring"]},
 	"choir":  {"name": "The Hollow Choir", "hp": 4500.0,  "r": 1.4, "speed": 1.7,  "dmg": 22.0, "xp": 220.0, "color": "a46bff", "moves": ["ring", "summon", "spiral"]},
+	"witch":  {"name": "The Harvest Witch", "hp": 9000.0, "r": 1.2, "speed": 2.0, "dmg": 22.0, "xp": 300.0, "color": "9dff5c", "moves": ["gourds", "spiral", "blink", "ring"]},
 	"king":   {"name": "The Hollow King",  "hp": 22000.0, "r": 1.8, "speed": 1.95, "dmg": 32.0, "xp": 600.0, "color": "ffd166", "moves": ["dash", "ring", "summon", "spiral"]},
 }
 
 # [time, boss, hp multiplier]
-const BOSS_SCHEDULE := [[180.0, "warden", 1.0], [360.0, "choir", 1.0], [540.0, "warden", 3.5], [720.0, "king", 1.0]]
+const BOSS_SCHEDULE := [[180.0, "warden", 1.0], [360.0, "choir", 1.0], [540.0, "witch", 1.0], [720.0, "king", 1.0]]
 
 # [time, enemy, count, message]
 const EVENTS := [
@@ -90,6 +93,16 @@ const NIGHT_REWARD := 0.25  # extra Embers per Night above the first
 
 # Awakening: a maxed weapon + its paired relic -> the next chest awakens it.
 const AWAKEN := {"bolt": "might", "halo": "light", "pulse": "reach", "arc": "haste", "scythe": "swift", "mines": "luck", "frost": "plating"}
+# What each weapon gains on top of the damage and speed when awakened.
+const AWAKEN_DESC := {
+	"bolt": "Embers explode on impact.",
+	"halo": "Its orbs burn hotter and wider.",
+	"pulse": "Each enemy struck heals you a little.",
+	"arc": "Lightning leaps further.",
+	"scythe": "Blades grow larger and hit harder.",
+	"mines": "Seeds burst in a much wider blast.",
+	"frost": "Slowed enemies shatter, hurting those nearby.",
+}
 const AWAKEN_DMG := 1.4
 const AWAKEN_RATE := 1.15
 
@@ -215,6 +228,11 @@ const DIALOGUE := {
 		["self", "Those are not the lantern hymns. You have changed the words."],
 		["choir", "The words changed us. Come. There is room in the chorus."],
 	],
+	"boss_witch": [
+		["witch", "Oh, a little lantern, wandering my fields on Hallow's Eve! How delicious."],
+		["self", "These fields belonged to the villages. Where are the people who planted them?"],
+		["witch", "Sleeping under the pumpkins, dearie. And every pumpkin needs a candle."],
+	],
 	"boss_king": [
 		["king", "Another lantern. How many of you must I put out before you understand?"],
 		["self", "Aldric. The Order remembers you."],
@@ -230,6 +248,8 @@ const BARKS := {
 	"boss_warden2": [["warden", "I held the road. I will hold it again. And again. And again."]],
 	"boss_choir": [["choir", "Sing with us..."]],
 	"boss_king": [["king", "Another lantern. Again."]],
+	"boss_witch": [["witch", "Back for another treat, dearie?"]],
+	"defeat_witch": [["witch", "My lovely pumpkins... who will carve you now?"]],
 	"defeat_warden": [["warden", "The road... is clear. Tell the captain... I held."]],
 	"defeat_choir": [["choir", "Ah... we remember the old tune now. Thank you."]],
 	"defeat_king": [["king", "It is... so warm. I had forgotten. Thank you, Keeper."]],
