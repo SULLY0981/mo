@@ -3,6 +3,37 @@ class_name Data
 
 const DAWN_TIME := 720.0
 
+# ---------------------------------------------------------------- daily night
+const DAILY_MODS := [
+	{"id": "glass", "name": "Glass Lantern", "desc": "Half health, double damage."},
+	{"id": "swift", "name": "Restless Dead", "desc": "Enemies move 20% faster."},
+	{"id": "gourds", "name": "Pumpkin Plague", "desc": "Gourdlings from the first minute, and many more of them."},
+	{"id": "treasure", "name": "Treasure Night", "desc": "Elites (and their chests) come twice as often."},
+	{"id": "blood", "name": "Blood Moon", "desc": "The Blood Moon rises from the start. Enemies hit 15% harder."},
+	{"id": "horde", "name": "The Horde", "desc": "30% more enemies."},
+	{"id": "shrineless", "name": "Faithless", "desc": "No shrines tonight, but you start with 3 rerolls."},
+]
+
+
+static func daily_info() -> Dictionary:
+	## Today's Daily Night: the same map, Keeper and two modifiers for everyone (UTC date).
+	var d := Time.get_date_dict_from_system(true)
+	var date := "%04d-%02d-%02d" % [d.year, d.month, d.day]
+	var r := RandomNumberGenerator.new()
+	r.seed = hash("lantern-" + date)
+	var mods := []
+	var pool := DAILY_MODS.duplicate()
+	for i in 2:
+		mods.append(pool.pop_at(r.randi_range(0, pool.size() - 1)).id)
+	return {"date": date, "seed": r.randi_range(1, 99999), "char": CHAR_ORDER[r.randi_range(0, CHAR_ORDER.size() - 1)], "mods": mods}
+
+
+static func daily_mod(id: String) -> Dictionary:
+	for m in DAILY_MODS:
+		if m.id == id:
+			return m
+	return {}
+
 # Store link for the demo's Wishlist button. Replace with your app's page once it exists,
 # e.g. "https://store.steampowered.com/app/1234560/The_Last_Lantern/".
 const STEAM_URL := "https://store.steampowered.com/search/?term=The+Last+Lantern"

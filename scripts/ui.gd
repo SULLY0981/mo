@@ -266,6 +266,8 @@ func show_menu() -> void:
 		v.add_child(_label(tr("DEMO"), 26, f_bold, GOLD))
 	var sp := Control.new(); sp.custom_minimum_size.y = 12; v.add_child(sp)
 	v.add_child(_button(tr("Play"), func(): play_pressed()))
+	if not Data.demo():
+		v.add_child(_button(tr("Daily Night"), func(): show_daily()))
 	v.add_child(_button(tr("Sanctum"), func(): show_shop()))
 	v.add_child(_button(tr("Journal"), func(): show_journal()))
 	v.add_child(_button(tr("Achievements"), func(): show_ach()))
@@ -274,7 +276,12 @@ func show_menu() -> void:
 		v.add_child(_button(tr("Wishlist on Steam"), func(): OS.shell_open(Data.STEAM_URL)))
 	v.add_child(_button(tr("Quit"), func(): get_tree().quit()))
 	var sp2 := Control.new(); sp2.custom_minimum_size.y = 10; v.add_child(sp2)
-	v.add_child(_label("◆ " + tr("%d Embers") % int(Save.data.coins), 30, f_bold, GOLD))
+	var emb := _label("◆ " + tr("%d Embers") % int(Save.data.coins), 30, f_bold, GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+	_place(emb, 1, 0, -440, 40, 400, 40)
+	s.add_child(emb)
+	for b in v.get_children():
+		if b is Button:
+			b.custom_minimum_size.y = 56
 	var hint := _label(_menu_hint(), 20, f_body, Color(0.45, 0.4, 0.58), HORIZONTAL_ALIGNMENT_CENTER)
 	_place(hint, 0.5, 1, -700, -50, 1400, 30)
 	s.add_child(hint)
@@ -759,6 +766,36 @@ func play_pressed() -> void:
 		show_story(Data.INTRO, "", func(): show_chars())
 	else:
 		show_chars()
+
+
+func show_daily() -> void:
+	_clear("daily")
+	var s := _screen("daily")
+	var grad := ColorRect.new(); grad.color = Color(0.01, 0.005, 0.03, 0.85); grad.set_anchors_preset(Control.PRESET_FULL_RECT); s.add_child(grad)
+	var d := Data.daily_info()
+	var v := _center_col(s, 16)
+	v.add_child(_title(tr("Daily Night"), 64))
+	v.add_child(_label(d.date + "   ·   " + tr("Everyone plays the same night today."), 24, f_body, MUTED, HORIZONTAL_ALIGNMENT_CENTER))
+	var row := HBoxContainer.new(); row.alignment = BoxContainer.ALIGNMENT_CENTER; row.add_theme_constant_override("separation", 14)
+	var ic := ItemIcon.new(); ic.custom_minimum_size = Vector2(64, 64); ic.setup(Data.CHARS[d.char].weapon); row.add_child(ic)
+	row.add_child(_label(tr("Keeper: %s") % tr(Data.CHARS[d.char].name), 32, f_head, AMBER))
+	v.add_child(row)
+	for id in d.mods:
+		var m := Data.daily_mod(id)
+		var p := PanelContainer.new(); p.custom_minimum_size = Vector2(820, 80)
+		var pv := VBoxContainer.new(); p.add_child(pv)
+		pv.add_child(_label(tr(m.name), 28, f_head, Color("ff9a3d")))
+		pv.add_child(_label(tr(m.desc), 22, f_body, TEXT))
+		var cc := CenterContainer.new(); cc.add_child(p); v.add_child(cc)
+	var dd: Dictionary = Save.data.get("daily", {})
+	var best := int(dd.best) if dd.get("date", "") == d.date else 0
+	v.add_child(_label(tr("Today's best: %s") % (_fmt_time(mini(best, 599)) if best < 600 else tr("Dawn") + " + " + _fmt_time(best - 600)) + "     " + tr("Streak: %d days") % int(dd.get("streak", 0)),
+		24, f_bold, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	var r2 := HBoxContainer.new(); r2.alignment = BoxContainer.ALIGNMENT_CENTER; r2.add_theme_constant_override("separation", 16)
+	r2.add_child(_button(tr("Begin"), func(): main.start_daily(), 300))
+	r2.add_child(_button(tr("Back"), func(): show_menu(), 220))
+	v.add_child(r2)
+	_show("daily")
 
 
 func show_journal() -> void:
@@ -1510,6 +1547,10 @@ func show_over(reason: String) -> void:
 		col.add_child(_label(pair[1], 46, f_head, TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 		stats.add_child(col)
 	v.add_child(stats)
+	if world.has_meta("daily_score"):
+		var sc := int(world.get_meta("daily_score"))
+		var dd: Dictionary = Save.data.daily
+		v.add_child(_label(tr("Daily Night score: %d   ·   Today's best: %d") % [sc, int(dd.get("best", 0))], 26, f_bold, GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 	var newm := int(world.get_meta("new_memories", 0))
 	if newm > 0:
 		v.add_child(_label(tr("New memories recovered: %d. Read them in the Journal.") % newm, 24, f_bold, Color("b9a7ff"), HORIZONTAL_ALIGNMENT_CENTER))
@@ -1529,7 +1570,7 @@ func show_over(reason: String) -> void:
 		h.add_child(_label(str(int(w.dmg_total)), 22, f_bold, TEXT))
 		var cc := CenterContainer.new(); cc.add_child(h); v.add_child(cc)
 	var row := HBoxContainer.new(); row.alignment = BoxContainer.ALIGNMENT_CENTER; row.add_theme_constant_override("separation", 16)
-	row.add_child(_button(tr("Play Again"), func(): main.start_run(world.char_id), 300))
+	row.add_child(_button(tr("Play Again"), func(): main.start_daily() if world.daily.has("date") else main.start_run(world.char_id), 300))
 	row.add_child(_button(tr("Main Menu"), func(): main.go_menu(), 300))
 	v.add_child(row)
 	_show("over")
@@ -1609,7 +1650,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if event.is_action_pressed("ui_cancel"):
-		for n in ["chars", "shop", "ach", "journal"]:
+		for n in ["chars", "shop", "ach", "journal", "daily"]:
 			if _visible(n):
 				show_menu()
 				get_viewport().set_input_as_handled()

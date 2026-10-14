@@ -54,7 +54,10 @@ func _ready() -> void:
 			elif a.begins_with("--night="):
 				Save.data.night = int(a.substr(8))
 				Save.data.nights_won = 5
-		start_run(c)
+		if "--daily" in args:
+			start_daily()
+		else:
+			start_run(c)
 		world.set_meta("bot", true)
 		if "--god" in args:
 			world.set_meta("god", true)
@@ -85,7 +88,12 @@ func preview_char(c: String) -> void:
 		world._tint_player(c)
 
 
-func start_run(c: String) -> void:
+func start_daily() -> void:
+	var d := Data.daily_info()
+	start_run(d.char, d)
+
+
+func start_run(c: String, daily := {}) -> void:
 	Save.data.last_char = c
 	Save.persist()
 	get_tree().paused = false
@@ -99,7 +107,8 @@ func start_run(c: String) -> void:
 	world.story.connect(_on_story)
 	world.tip.connect(ui.on_tip)
 	ui.show_hud(world)  # before start_run, which emits the opening toast
-	world.start_run(c, mini(int(Save.data.get("night", 1)), int(Save.data.get("nights_won", 0)) + 1))
+	var n := 1 if not daily.is_empty() else mini(int(Save.data.get("night", 1)), int(Save.data.get("nights_won", 0)) + 1)
+	world.start_run(c, n, daily)
 	if Controls.p2_device >= 0 and not autotest:
 		world.add_coop_player(ui.p2_char, Controls.p2_device)
 	elif autotest and "--coop" in OS.get_cmdline_user_args():
@@ -328,6 +337,9 @@ func _menu_shots(dir: String) -> void:
 	ui.show_journal()
 	await get_tree().create_timer(1.0).timeout
 	await _shot(dir, "journal")
+	ui.show_daily()
+	await get_tree().create_timer(1.0).timeout
+	await _shot(dir, "daily")
 	for tab in ["General", "Controls"]:
 		ui.show_settings("menu", tab)
 		await get_tree().create_timer(1.0).timeout

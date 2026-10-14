@@ -595,17 +595,27 @@ func night_reward() -> float:
 	return 1.0 + Data.NIGHT_REWARD * (night - 1)
 
 
-func start_run(c: String, n := 1) -> void:
+var daily := {}  # today's Daily Night info, or empty for a normal run
+
+
+func mod(id: String) -> bool:
+	return daily.has("mods") and id in daily.mods
+
+
+func start_run(c: String, n := 1, daily_run := {}) -> void:
 	mode = "run"
 	char_id = c
+	daily = daily_run
 	night = clampi(n, 1, Data.NIGHTS.size())
-	map_seed = randi() % 100000
+	map_seed = int(daily.seed) if daily.has("seed") else randi() % 100000
 	reg_noise.seed = map_seed
 	_tint_player(c)
 	P = {"level": 1, "xp": 0.0, "xp_next": xp_for(1), "revives": Save.shop_level("revive"), "rerolls": Save.shop_level("reroll"), "max_hp": 0.0, "hp": 0.0}
 	recalc_stats()
 	P.hp = P.max_hp
 	add_weapon(Data.CHARS[c].weapon)
+	if mod("shrineless"):
+		P.rerolls += 3
 	_save_ctx()
 	_update_chunks(true)
 	toast.emit(tr("Survive until dawn"), Color("ffd166"))
@@ -648,6 +658,9 @@ func recalc_stats() -> void:
 	P.light = 9.0 * mods.get("light", 1.0) * (1 + 0.15 * pl.call("light"))
 	P.light_bonus = 1.15 if pl.call("light") > 0 else 1.0
 	P.dash_cd = Data.DASH_CD * pow(0.85, pl.call("cinder"))
+	if mod("glass"):
+		P.max_hp *= 0.5
+		P.might *= 2.0
 	if old_max > 0:
 		P.hp = minf(P.max_hp, P.hp + maxf(0, P.max_hp - old_max))
 	lantern_light.omni_range = P.light * 1.35
@@ -1117,8 +1130,8 @@ func spawn_enemy(type: String, at = null, elite := false) -> Enemy:
 	e.r = T.r * (1.45 if elite else 1.0)
 	e.hp = T.hp * _hp_scale() * (8.0 if elite else 1.0) * (Data.NIGHT_HP if night >= 2 else 1.0)
 	e.max_hp = e.hp
-	e.speed = T.speed * randf_range(0.9, 1.1) * (0.92 if elite else 1.0) * (Data.NIGHT_SPEED if night >= 3 else 1.0)
-	e.dmg = T.dmg * (1 + m * 0.05) * (1.4 if elite else 1.0)
+	e.speed = T.speed * randf_range(0.9, 1.1) * (0.92 if elite else 1.0) * (Data.NIGHT_SPEED if night >= 3 else 1.0) * (1.2 if mod("swift") else 1.0)
+	e.dmg = T.dmg * (1 + m * 0.05) * (1.4 if elite else 1.0) * (1.15 if mod("blood") else 1.0)
 	e.xp = T.xp * (1 + m * 0.08) * (12.0 if elite else 1.0)
 	e.elite = elite
 	e.t = randf() * 10
@@ -1170,7 +1183,7 @@ func spawn_boss(type: String, mult: float) -> void:
 func _pick_type(m: float) -> String:
 	var opts := [["wisp", maxf(2, 10 - m * 0.8)], ["bat", 5.0 if m >= 0.75 else 0.0], ["spitter", 2.5 if m >= 2 else 0.0],
 		["brute", 2 + m * 0.25 if m >= 3 else 0.0], ["splitter", 3.0 if m >= 4 else 0.0], ["ghoul", 2 + (m - 7) * 0.6 if m >= 7 else 0.0],
-		["gourd", 2.2 if m >= 5 else 0.0], ["scarecrow", 1.8 if m >= 6 else 0.0]]
+		["gourd", (6.0 if m >= 1 else 0.0) if mod("gourds") else (2.2 if m >= 5 else 0.0)], ["scarecrow", 1.8 if m >= 6 else 0.0]]
 	var total := 0.0
 	for o in opts:
 		total += o[1]
@@ -1209,9 +1222,9 @@ func _director(dt: float) -> void:
 			spawn_boss(["warden", "choir", "witch", "king"].pick_random(), 1.0 + k * 0.5)
 	elite_t -= dt
 	if elite_t <= 0:
-		elite_t = maxf(35.0, 70.0 - m * 3) * (0.6 if night >= 4 else 1.0)
+		elite_t = maxf(35.0, 70.0 - m * 3) * (0.6 if night >= 4 else 1.0) * (0.5 if mod("treasure") else 1.0)
 		spawn_enemy(_pick_type(m), null, true)
-	var target := minf(MAX_ENEMIES, 22 + time * 0.75)
+	var target := minf(MAX_ENEMIES, (22 + time * 0.75) * (1.3 if mod("horde") else 1.0))
 	var rate := minf(45.0, 1.6 + time / 12.0) * (0.6 if bosses.size() > 0 else 1.0)
 	spawn_acc += rate * dt
 	while spawn_acc >= 1.0:
@@ -2106,6 +2119,18 @@ func end_run(reason: String) -> void:
 	b.time = maxf(b.time, time)
 	b.kills = maxi(int(b.kills), kills)
 	b.level = maxi(int(b.level), int(P.level))
+	if daily.has("date"):
+		# Daily Night score: seconds survived, plus a bonus for bringing the dawn.
+		var score := int(time) + (600 if won else 0)
+		set_meta("daily_score", score)
+		var dd: Dictionary = Save.data.daily
+		if dd.get("date", "") != daily.date:
+			var last := str(dd.get("date", ""))
+			var yesterday := Time.get_date_string_from_unix_time(Time.get_unix_time_from_system() - 86400)
+			dd.streak = int(dd.get("streak", 0)) + 1 if last == yesterday else 1
+			dd.date = daily.date
+			dd.best = 0
+		dd.best = maxi(int(dd.get("best", 0)), score)
 	Save.unlock("ACH_FIRST_NIGHT")
 	if Save.data.coins >= 2000:
 		Save.unlock("ACH_RICH")
@@ -2257,7 +2282,7 @@ func _make_chunk(k: Vector2i) -> void:
 				root.add_child(g)
 				cols.append([at + off, 0.4])
 	# A lantern shrine in roughly one chunk of eight, never in the starting clearing.
-	if mode == "run" and absi(k.x) + absi(k.y) >= 2 and r.randf() < 0.1:
+	if mode == "run" and absi(k.x) + absi(k.y) >= 2 and r.randf() < 0.1 and not mod("shrineless"):
 		var key := "sh_%d_%d" % [k.x, k.y]
 		var at := origin + Vector2(CHUNK, CHUNK) * 0.5 + Vector2(r.randf_range(-3, 3), r.randf_range(-3, 3))
 		var sh := _make_shrine()
@@ -2645,7 +2670,7 @@ func _smash_pumpkin(p) -> void:
 
 
 func _update_atmosphere(dt: float) -> void:
-	var want := 1.0 if (night >= 5 or (time >= 600.0 and (not won or endless))) else 0.0
+	var want := 1.0 if (night >= 5 or mod("blood") or (time >= 600.0 and (not won or endless))) else 0.0
 	if mode != "run":
 		want = 0.0
 	if absf(blood - want) < 0.001:
