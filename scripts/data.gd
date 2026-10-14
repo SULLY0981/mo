@@ -3,6 +3,15 @@ class_name Data
 
 const DAWN_TIME := 720.0
 
+# Store link for the demo's Wishlist button. Replace with your app's page once it exists,
+# e.g. "https://store.steampowered.com/app/1234560/The_Last_Lantern/".
+const STEAM_URL := "https://store.steampowered.com/search/?term=The+Last+Lantern"
+
+
+static func demo() -> bool:
+	## Demo builds export with the "demo" feature tag; --demo on the command line tests it.
+	return OS.has_feature("demo") or "--demo" in OS.get_cmdline_user_args()
+
 const ENEMIES := {
 	"wisp":     {"hp": 9.0,   "speed": 2.3, "r": 0.4,  "dmg": 7.0,  "xp": 1.0, "color": "8a5cff"},
 	"bat":      {"hp": 5.0,   "speed": 4.0, "r": 0.34, "dmg": 5.0,  "xp": 1.0, "color": "ff4d8d", "erratic": true, "hover": 0.9},

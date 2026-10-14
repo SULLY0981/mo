@@ -10,6 +10,7 @@ signal toast(text: String, color: Color)
 signal victory_ready
 signal boss_changed(active: bool)
 signal story(id: String)
+signal tip(id: String)
 
 const CELL := 2.0
 const SPAWN_R := 23.0
@@ -705,6 +706,7 @@ func step(dt: float) -> void:
 	_use(0)
 	_update_shrines(dt)
 	_update_revives(dt)
+	_check_tips()
 	_check_region(dt)
 	_update_atmosphere(dt)
 	_cleanup()
@@ -942,6 +944,26 @@ func _update_revives(dt: float) -> void:
 			Sfx.play("revive")
 			toast.emit(tr("Player %d is back!") % (i + 1), PLAYER_COLORS[i % 4])
 		_use(was)
+
+
+func _check_tips() -> void:
+	## One-time hints for a new player; the UI decides whether each has been seen before.
+	if has_meta("bot"):
+		return
+	if time > 3.0:
+		tip.emit("move")
+	if time > 14.0:
+		tip.emit("dash")
+	if not gems.is_empty() and time > 6.0:
+		tip.emit("gems")
+	for s in shrines:
+		if not s.lit and s.pos.distance_squared_to(ppos) < 196.0:
+			tip.emit("shrine")
+	for p in pickups:
+		if p.kind == "pumpkin" and p.pos.distance_squared_to(ppos) < 100.0:
+			tip.emit("pumpkin")
+	if awaken_ready():
+		tip.emit("awaken")
 
 
 func _all_down() -> bool:
@@ -1242,6 +1264,18 @@ func kill_enemy(e: Enemy) -> void:
 			spawn_pickup("coin", e.pos + Vector2(randf_range(-2, 2), randf_range(-2, 2)))
 		Save.data.totals.bosses += 1
 		Save.unlock("ACH_BOSS")
+		if Data.demo() and not won:
+			# The demo ends with the first boss.
+			won = true
+			victory_t = 2.8
+			set_meta("demo_end", true)
+			banner.emit(tr("Boss Defeated").to_upper(), tr(e.bname), Color("ffd166"))
+			Sfx.play("victory")
+			story.emit("defeat_" + e.type)
+			for o in enemies:
+				if not o.boss and not o.dead:
+					o.dead = true
+			return
 		if e.is_king and not won:
 			won = true
 			victory_t = 2.8
@@ -1997,7 +2031,7 @@ func end_run(reason: String) -> void:
 		return
 	over = true
 	var bonus := int(floor((floor(time / 10.0) + floor(kills / 25.0) + (400 if won else 0)) * P.greed * night_reward()))
-	if won:
+	if won and not has_meta("demo_end"):
 		Save.data.nights_won = maxi(int(Save.data.get("nights_won", 0)), night)
 		if night >= Data.NIGHTS.size():
 			Save.unlock("ACH_NIGHT_5")

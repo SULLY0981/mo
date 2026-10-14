@@ -70,6 +70,7 @@ func _ready() -> void:
 	root.theme = th
 	add_child(root)
 	_build_hud()
+	_build_tips()
 	_build_dialogue()
 	_build_ach_toast()
 
@@ -261,12 +262,16 @@ func show_menu() -> void:
 	t.label_settings.outline_size = 0
 	v.add_child(t)
 	v.add_child(_label(tr("The night is endless. Your light is not."), 30, f_body, MUTED))
+	if Data.demo():
+		v.add_child(_label(tr("DEMO"), 26, f_bold, GOLD))
 	var sp := Control.new(); sp.custom_minimum_size.y = 12; v.add_child(sp)
 	v.add_child(_button(tr("Play"), func(): play_pressed()))
 	v.add_child(_button(tr("Sanctum"), func(): show_shop()))
 	v.add_child(_button(tr("Journal"), func(): show_journal()))
 	v.add_child(_button(tr("Achievements"), func(): show_ach()))
 	v.add_child(_button(tr("Settings"), func(): show_settings("menu")))
+	if Data.demo():
+		v.add_child(_button(tr("Wishlist on Steam"), func(): OS.shell_open(Data.STEAM_URL)))
 	v.add_child(_button(tr("Quit"), func(): get_tree().quit()))
 	var sp2 := Control.new(); sp2.custom_minimum_size.y = 10; v.add_child(sp2)
 	v.add_child(_label("◆ " + tr("%d Embers") % int(Save.data.coins), 30, f_bold, GOLD))
@@ -476,6 +481,64 @@ func show_ach() -> void:
 	var back := _button(tr("Back"), func(): show_menu(), 220)
 	var bc := CenterContainer.new(); bc.add_child(back); v.add_child(bc)
 	_show("ach")
+
+
+# ================================================================= tips
+var tip_panel: PanelContainer
+var tip_label: Label
+var tip_queue: Array = []
+var tip_t := 0.0
+
+
+func _build_tips() -> void:
+	tip_panel = PanelContainer.new()
+	tip_panel.add_theme_stylebox_override("panel", _sb(Color(0.05, 0.035, 0.08, 0.88), Color("6e5aa0"), 2, 12))
+	_place(tip_panel, 0.5, 1, -460, -400, 920, 64)
+	tip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tip_panel.modulate.a = 0.0
+	hud.add_child(tip_panel)
+	tip_label = _label("", 26, f_body, TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	tip_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tip_panel.add_child(tip_label)
+
+
+func _tip_text(id: String) -> String:
+	match id:
+		"move":
+			if Controls.using_pad:
+				return tr("Move with the left stick. Your weapons fire on their own.")
+			return tr("Move with %s. Your weapons fire on their own.") % "".join([Controls.prompt("move_up"), Controls.prompt("move_left"), Controls.prompt("move_down"), Controls.prompt("move_right")])
+		"dash":
+			return tr("Press %s to dash. You can't be hurt while dashing.") % Controls.prompt("dash")
+		"gems":
+			return tr("Collect the soul-gems enemies drop to level up.")
+		"shrine":
+			return tr("A lantern shrine! Stand beside it to rekindle it.")
+		"pumpkin":
+			return tr("Walk into a jack-o'-lantern to smash it. Treat... or trick?")
+		"awaken":
+			return tr("Your weapon can awaken! Open a chest to awaken it.")
+	return ""
+
+
+func on_tip(id: String) -> void:
+	var seen: Array = Save.data.get("tips_seen", [])
+	if seen.has(id) or tip_queue.has(id):
+		return
+	seen.append(id)
+	Save.data.tips_seen = seen
+	tip_queue.append(id)
+
+
+func _tips_process(dt: float) -> void:
+	if tip_t > 0:
+		tip_t -= dt
+		tip_panel.modulate.a = clampf(minf(tip_t, 6.0 - tip_t) * 3.0, 0.0, 1.0)
+		return
+	if tip_queue.is_empty() or current != "":
+		return
+	tip_label.text = _tip_text(tip_queue.pop_front())
+	tip_t = 6.0
 
 
 # ================================================================= dialogue
@@ -1147,6 +1210,8 @@ func _menu_hint() -> String:
 func _process(_dt: float) -> void:
 	card_lock -= _dt
 	_dialogue_process(_dt)
+	if hud.visible:
+		_tips_process(_dt)
 	fps_label.visible = bool(Save.setting("show_fps"))
 	if fps_label.visible:
 		fps_label.text = "%d FPS" % Engine.get_frames_per_second()
@@ -1403,6 +1468,22 @@ func show_pause() -> void:
 	for b in [["Resume", func(): main.toggle_pause()], ["Settings", func(): show_settings("pause")], ["Abandon Run", func(): main.abandon()]]:
 		var cc := CenterContainer.new(); cc.add_child(_button(tr(b[0]), b[1])); v.add_child(cc)
 	_show("pause")
+
+
+func show_demo_end() -> void:
+	_clear("victory")
+	var s := _screen("victory", true)
+	var v := _center_col(s, 20)
+	v.add_child(_title(tr("Thanks for playing the demo!"), 70, GOLD))
+	for line in ["The night is far from over. In the full game, the Hollow Choir sings, the Warden rises again, and Aldric waits at the end of the longest night.",
+			"Seven Keepers, five Nights, co-op, and the whole story of the Order are waiting."]:
+		var l := _label(tr(line), 28, f_body, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size.x = 1100
+		v.add_child(l)
+	var c1 := CenterContainer.new(); c1.add_child(_button(tr("Wishlist on Steam"), func(): OS.shell_open(Data.STEAM_URL), 520)); v.add_child(c1)
+	var c2 := CenterContainer.new(); c2.add_child(_button(tr("Rest & Claim Rewards"), func(): get_tree().paused = false; world.end_run("victory"), 520)); v.add_child(c2)
+	_show("victory")
 
 
 func show_victory() -> void:

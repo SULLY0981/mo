@@ -94,6 +94,7 @@ func start_run(c: String) -> void:
 	world.toast.connect(ui.toast)
 	world.boss_changed.connect(func(active): Sfx.music("boss" if active else "battle"))
 	world.story.connect(_on_story)
+	world.tip.connect(ui.on_tip)
 	ui.show_hud(world)  # before start_run, which emits the opening toast
 	world.start_run(c, mini(int(Save.data.get("night", 1)), int(Save.data.get("nights_won", 0)) + 1))
 	if Controls.p2_device >= 0 and not autotest:
@@ -156,6 +157,9 @@ func _on_victory() -> void:
 		world.end_run("victory")
 		return
 	get_tree().paused = true
+	if world.has_meta("demo_end"):
+		ui.show_demo_end()
+		return
 	if world.night >= Data.NIGHTS.size() and not Save.data.get("seen_true_ending", false):
 		Save.data.seen_true_ending = true
 		Save.data.seen_ending = true
@@ -234,6 +238,12 @@ func _process(_delta: float) -> void:
 			world.P.hp = world.P.max_hp
 		world.sync_visuals(dt)
 		test_log_t += 1
+		if "--perf" in OS.get_cmdline_user_args() and int(test_log_t) % 60 == 0:
+			print("PERF t=%.0f fps=%d enemies=%d projs=%d bullets=%d gems=%d pickups=%d draw_calls=%d" % [world.time, Engine.get_frames_per_second(),
+				world.enemies.size(), world.projs.size(), world.bullets.size(), world.gems.size(), world.pickups.size(),
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)])
+			if int(test_log_t) >= 60 * 20:
+				get_tree().quit()
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--snap=") and int(test_log_t) == 150:
 				await RenderingServer.frame_post_draw
