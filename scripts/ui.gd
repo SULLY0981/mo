@@ -522,9 +522,15 @@ func show_journal() -> void:
 		22, f_body, MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	sub.anchor_right = 1; sub.offset_top = 118; sub.offset_bottom = 150
 	s.add_child(sub)
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(110, 180)
+	scroll.custom_minimum_size = Vector2(660, 740)
+	scroll.size = Vector2(660, 740)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	s.add_child(scroll)
 	var list := VBoxContainer.new(); list.add_theme_constant_override("separation", 6)
-	list.position = Vector2(110, 180)
-	s.add_child(list)
+	scroll.add_child(list)
 	var panel := PanelContainer.new()
 	_place(panel, 1, 0, -1080, 180, 960, 720)
 	s.add_child(panel)
