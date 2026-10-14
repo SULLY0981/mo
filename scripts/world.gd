@@ -855,7 +855,7 @@ func _director(dt: float) -> void:
 			_ring_spawn(ev[1], ev[2], ev[3])
 	if endless:
 		var k := int((time - Data.DAWN_TIME) / 120.0)
-		if k >= 1 and not boss_done.has("e%d" % k):
+		if k >= 1 and not boss_done.has("e%d" % k) and bosses.size() < 3:
 			boss_done["e%d" % k] = true
 			spawn_boss(["warden", "choir", "king"].pick_random(), 1.0 + k * 0.5)
 	elite_t -= dt
@@ -1346,7 +1346,7 @@ func _boss_ai(e: Enemy, dt: float, d: Vector2, dist: float) -> void:
 				e.atk = 2.6
 				Sfx.play("boss_shot")
 			"summon":
-				for i in 10:
+				for i in mini(10, MAX_ENEMIES - enemies.size()):
 					var a := float(i) / 10 * TAU
 					spawn_enemy("ghoul" if e.is_king else "bat", e.pos + Vector2(cos(a), sin(a)) * 2.6)
 				e.atk = 3.0
@@ -1432,9 +1432,16 @@ func _update_gems(dt: float) -> void:
 
 func _update_pickups(dt: float) -> void:
 	var m2: float = pow(P.magnet * 0.8, 2)
+	var far2 := pow(RECYCLE_R * 1.5, 2)
 	for p in pickups:
 		p.t += dt
 		var d2 := p.pos.distance_squared_to(ppos)
+		if d2 > far2 and p.kind != "chest":
+			# Left far behind: bank coins, drop the rest, so long Endless runs don't pile up nodes.
+			p.dead = true
+			if p.kind == "coin":
+				coins += maxi(1, int(round(p.v * P.greed)))
+			continue
 		if not p.mag and d2 < m2:
 			p.mag = true
 		if p.mag:
@@ -1605,6 +1612,7 @@ func end_run(reason: String) -> void:
 	var total := coins + bonus
 	set_meta("earned", total)
 	Save.add_coins(total)
+	check_achievements()  # before totals absorb this run's kills, or ACH_KILLS_TOTAL counts them twice
 	var t: Dictionary = Save.data.totals
 	t.kills += kills
 	t.runs += 1
@@ -1613,7 +1621,6 @@ func end_run(reason: String) -> void:
 	b.time = maxf(b.time, time)
 	b.kills = maxi(int(b.kills), kills)
 	b.level = maxi(int(b.level), int(P.level))
-	check_achievements()
 	Save.unlock("ACH_FIRST_NIGHT")
 	if Save.data.coins >= 2000:
 		Save.unlock("ACH_RICH")
@@ -1988,6 +1995,15 @@ func _sync_telegraphs() -> void:
 		elif tn != null:
 			_pool_put(tn)
 			tele_nodes.erase(e.id)
+	# A boss killed mid wind-up has already left `bosses`; release its strip too.
+	if not tele_nodes.is_empty():
+		var live := {}
+		for e in bosses:
+			live[e.id] = true
+		for id in tele_nodes.keys():
+			if not live.has(id):
+				_pool_put(tele_nodes[id])
+				tele_nodes.erase(id)
 
 
 func _menu_anim(delta: float) -> void:

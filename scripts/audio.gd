@@ -16,6 +16,8 @@ var gem_t := 0.0
 var music_a: AudioStreamPlayer
 var music_b: AudioStreamPlayer
 var current_music := ""
+var music_in: AudioStreamPlayer
+var music_tw: Tween
 
 
 func _ready() -> void:
@@ -69,12 +71,17 @@ func music(n: String) -> void:
 	var stream: AudioStream = load("res://assets/audio/music_%s.ogg" % n)
 	if stream is AudioStreamOggVorbis:
 		stream.loop = true
-	var out := music_a if music_a.playing else music_b
+	# Fade out whichever player was last faded in; the old tween would otherwise stop the new track.
+	if music_tw:
+		music_tw.kill()
+	var out := music_in if music_in else music_a
 	var inn := music_b if out == music_a else music_a
+	music_in = inn
 	inn.stream = stream
 	inn.volume_db = -40.0
 	inn.play()
 	var tw := create_tween().set_parallel(true)
+	music_tw = tw
 	tw.tween_property(inn, "volume_db", 0.0, 1.5)
 	if out.playing:
 		tw.tween_property(out, "volume_db", -40.0, 1.5)

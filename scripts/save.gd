@@ -11,6 +11,7 @@ var steam: Object = null
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS  # keep Steam callbacks pumping on paused screens
 	data = _defaults()
 	_load()
 	_init_steam()
@@ -27,14 +28,21 @@ func _defaults() -> Dictionary:
 	}
 
 
-func _load() -> void:
-	if not FileAccess.file_exists(PATH):
-		return
-	var f := FileAccess.open(PATH, FileAccess.READ)
+func _read(path: String):
+	if not FileAccess.file_exists(path):
+		return null
+	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
-		return
+		return null
 	var parsed = JSON.parse_string(f.get_as_text())
-	if typeof(parsed) != TYPE_DICTIONARY:
+	return parsed if typeof(parsed) == TYPE_DICTIONARY else null
+
+
+func _load() -> void:
+	var parsed = _read(PATH)
+	if parsed == null:
+		parsed = _read(PATH + ".bak")  # main file missing or torn by a crash mid-write
+	if parsed == null:
 		return
 	for k in data.keys():
 		if not parsed.has(k):
@@ -43,14 +51,23 @@ func _load() -> void:
 			data[k].merge(parsed[k], true)
 		else:
 			data[k] = parsed[k]
+	if not Data.CHARS.has(str(data.last_char)):
+		data.last_char = "keeper"  # unknown id would crash the menu on every boot
 
 
 func persist() -> void:
 	if has_meta("no_persist"):
 		return  # test/recording modes must never touch the player's save
-	var f := FileAccess.open(PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(data))
+	# Write to a temp file, then swap it in, keeping the previous save as .bak.
+	var tmp := PATH + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(data))
+	f.close()
+	if FileAccess.file_exists(PATH):
+		DirAccess.rename_absolute(PATH, PATH + ".bak")
+	DirAccess.rename_absolute(tmp, PATH)
 
 
 func setting(key: String):

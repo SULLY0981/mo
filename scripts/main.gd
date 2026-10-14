@@ -10,6 +10,7 @@ var test_log_t := 0.0
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS  # keeps Esc/Start/F11 working while paused; World stays PAUSABLE
 	_setup_input()
 	ui = UI.new()
 	ui.main = self
@@ -106,8 +107,8 @@ func start_run(c: String) -> void:
 	world.banner.connect(ui.banner)
 	world.toast.connect(ui.toast)
 	world.boss_changed.connect(func(active): Sfx.music("boss" if active else "battle"))
+	ui.show_hud(world)  # before start_run, which emits the opening toast
 	world.start_run(c)
-	ui.show_hud(world)
 	Sfx.music("battle")
 
 
@@ -125,6 +126,8 @@ func _on_level_up() -> void:
 func level_choice_done(more: bool) -> void:
 	if more:
 		ui.show_level()
+	elif world.won and world.victory_t <= 0 and not world.endless and not world.over:
+		ui.show_victory()  # a level-up landed on the same frame as the victory screen
 	else:
 		ui.hide_overlays()
 		get_tree().paused = false
@@ -188,7 +191,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # ---------------------------------------------------------------- autotest
 func _process(_delta: float) -> void:
-	if not autotest or world == null or world.over:
+	if not autotest or world == null or world.over or get_tree().paused:
 		return
 	var steps := 12 if shots_dir != "" else 30
 	if shots_dir == "trailer":

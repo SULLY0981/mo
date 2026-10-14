@@ -343,8 +343,6 @@ func show_shop(focus_idx := -1) -> void:
 			Save.data.shop[it.id] = l + 1
 			Save.persist()
 			Sfx.play("buy")
-			if int(Save.data.coins) >= 2000:
-				Save.unlock("ACH_RICH")
 			show_shop(i))
 		grid.add_child(b)
 		buttons.append(b)
@@ -362,6 +360,8 @@ func show_shop(focus_idx := -1) -> void:
 		Save.data.shop = {}
 		Save.persist()
 		Sfx.play("coin")
+		if int(Save.data.coins) >= 2000:
+			Save.unlock("ACH_RICH")
 		show_shop(), 260))
 	row.add_child(_button("Back", func(): show_menu(), 220))
 	_show("shop")
@@ -407,7 +407,7 @@ func show_ach() -> void:
 
 
 # ================================================================= settings
-func show_settings(from: String) -> void:
+func show_settings(from: String, focus_quality := false) -> void:
 	_clear("settings")
 	var s := _screen("settings", true)
 	var v := _center_col(s, 14)
@@ -446,7 +446,7 @@ func show_settings(from: String) -> void:
 		qref.call()
 		if main.world and main.world.mode == "menu":
 			main.go_menu.call_deferred()
-			show_settings.call_deferred("menu"))
+			show_settings.call_deferred("menu", true))
 	v.add_child(qb)
 	if from == "menu":
 		var rb := _button("Reset Save Data", func(): pass, 640)
@@ -466,6 +466,8 @@ func show_settings(from: String) -> void:
 	var back := _button("Back", back_fn, 220)
 	var bc := CenterContainer.new(); bc.add_child(back); v.add_child(bc)
 	_show("settings")
+	if focus_quality:
+		qb.grab_focus.call_deferred()  # after _show's _focus_first, so A/Enter keeps cycling quality
 	if from == "pause":
 		current = "pause"
 
@@ -809,7 +811,7 @@ func show_over(reason: String) -> void:
 # ================================================================= input
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
-		if current == "" and screens.has("chars") and screens["chars"].visible or (screens.has("shop") and screens["shop"].visible) or (screens.has("ach") and screens["ach"].visible):
+		if (screens.has("chars") and screens["chars"].visible) or (screens.has("shop") and screens["shop"].visible) or (screens.has("ach") and screens["ach"].visible):
 			show_menu()
 			get_viewport().set_input_as_handled()
 		elif screens.has("settings") and screens["settings"].visible:
