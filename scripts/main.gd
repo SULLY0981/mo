@@ -111,7 +111,7 @@ func start_run(c: String) -> void:
 func _on_level_up() -> void:
 	if autotest:
 		while world.pending_levels > 0:
-			if not world.choose(0):
+			if not world.choose(_bot_pick()):
 				break
 		return
 	get_tree().paused = true
@@ -233,7 +233,7 @@ func _print_summary(reason: String) -> void:
 	var ws := []
 	for w in world.weapons:
 		ws.append("%s%d:%d" % [w.id, w.lvl, int(w.dmg_total)])
-	print("AUTOTEST END reason=%s t=%d lvl=%d kills=%d won=%s coins=%d weapons=%s passives=%s" % [reason, world.time, world.P.level, world.kills, world.won, world.coins, " ".join(ws), world.passives])
+	print("AUTOTEST END reason=%s t=%d lvl=%d kills=%d won=%s coins=%d weapons=%s passives=%s dmg=%s" % [reason, world.time, world.P.level, world.kills, world.won, world.coins, " ".join(ws), world.passives, world.get_meta("dmglog", {})])
 
 
 func _shot(dir: String, name: String) -> void:
@@ -288,10 +288,25 @@ func _trailer(at: float, has_char: bool) -> void:
 		world.step(1.0 / 60.0)
 		while world.pending_levels > 0:
 			world.choices = world.build_choices()
-			if world.choices.is_empty() or not world.choose(0):
+			if world.choices.is_empty() or not world.choose(_bot_pick()):
 				break
 		if world.P.hp < 30:
 			world.P.hp = world.P.max_hp
 	world.cam_target = Vector3(world.ppos.x, 0, world.ppos.y)
 	for e in world.enemies:
 		e.spawn_t = 1.0
+
+
+func _bot_pick() -> int:
+	## Test bot: favour upgrading owned weapons, then new weapons, then relics.
+	var best := 0
+	var best_score := -1.0
+	for i in world.choices.size():
+		var c: Dictionary = world.choices[i]
+		var score := randf()
+		if c.type == "w":
+			score += 2.0 if world._weapon(c.id) else 1.0
+		if score > best_score:
+			best_score = score
+			best = i
+	return best

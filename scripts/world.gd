@@ -588,7 +588,7 @@ func recalc_stats() -> void:
 	var sh := func(id): return Save.shop_level(id)
 	var pl := func(id): return int(passives.get(id, 0))
 	var old_max: float = P.max_hp
-	P.max_hp = (100.0 + sh.call("hp") * 10) * mods.get("hp", 1.0) * (1 + 0.2 * pl.call("vigor"))
+	P.max_hp = (120.0 + sh.call("hp") * 10) * mods.get("hp", 1.0) * (1 + 0.2 * pl.call("vigor"))
 	P.speed = 5.0 * (1 + sh.call("speed") * 0.04) * mods.get("speed", 1.0) * (1 + 0.08 * pl.call("swift"))
 	P.might = (1 + sh.call("might") * 0.05) * mods.get("might", 1.0) * (1 + 0.1 * pl.call("might"))
 	P.cd = (1 - sh.call("cd") * 0.03) * mods.get("cd", 1.0) * pow(0.93, pl.call("haste"))
@@ -776,7 +776,7 @@ func spawn_enemy(type: String, at = null, elite := false) -> Enemy:
 	e.hp = T.hp * _hp_scale() * (8.0 if elite else 1.0)
 	e.max_hp = e.hp
 	e.speed = T.speed * randf_range(0.9, 1.1) * (0.92 if elite else 1.0)
-	e.dmg = T.dmg * (1 + m * 0.07) * (1.4 if elite else 1.0)
+	e.dmg = T.dmg * (1 + m * 0.05) * (1.4 if elite else 1.0)
 	e.xp = T.xp * (1 + m * 0.08) * (12.0 if elite else 1.0)
 	e.elite = elite
 	e.t = randf() * 10
@@ -950,12 +950,16 @@ func kill_enemy(e: Enemy) -> void:
 		spawn_pickup("bomb", e.pos)
 
 
-func damage_player(raw: float) -> void:
+func damage_player(raw: float, src := "?") -> void:
 	if iframe > 0 or over or dying > 0 or (won and victory_t > 0):
 		return
 	var d := maxf(1.0, raw - P.armor)
+	if has_meta("bot"):
+		var lg: Dictionary = get_meta("dmglog", {})
+		lg[src] = lg.get(src, 0.0) + d
+		set_meta("dmglog", lg)
 	P.hp -= d
-	iframe = 0.5
+	iframe = 0.6
 	hurt = 1.0
 	took_damage = true
 	add_shake(0.35)
@@ -1267,7 +1271,7 @@ func _update_enemies(dt: float) -> void:
 			e.pos = _spawn_point(0.7)
 			burst(e.pos, 1.0, Color(Data.BOSSES[e.type].color), 2.0)
 		if dist < e.r + 0.4:
-			damage_player(e.dmg)
+			damage_player(e.dmg, e.type + ("_dash" if e.state == "dash" else ""))
 
 
 func _separate(e: Enemy) -> void:
@@ -1319,7 +1323,7 @@ func _boss_ai(e: Enemy, dt: float, d: Vector2, dist: float) -> void:
 			e.sp_a += 0.45
 			var k := 3 if enraged else 2
 			for i in k:
-				fire_bullet(e.pos, e.sp_a + i * TAU / k, 5.5, e.dmg * 0.5)
+				fire_bullet(e.pos, e.sp_a + i * TAU / k, 5.0, e.dmg * 0.35)
 	e.atk -= dt
 	if e.atk <= 0:
 		var mvname: String = B.moves.pick_random()
@@ -1332,10 +1336,10 @@ func _boss_ai(e: Enemy, dt: float, d: Vector2, dist: float) -> void:
 				var n := 26 if e.is_king else 18
 				var off := randf() * TAU
 				for i in n:
-					fire_bullet(e.pos, off + float(i) / n * TAU, 4.8, e.dmg * 0.55)
+					fire_bullet(e.pos, off + float(i) / n * TAU, 4.6, e.dmg * 0.4)
 				if enraged:
 					for i in n:
-						fire_bullet(e.pos, off + (i + 0.5) / n * TAU, 3.5, e.dmg * 0.55)
+						fire_bullet(e.pos, off + (i + 0.5) / n * TAU, 3.4, e.dmg * 0.4)
 				e.atk = 2.6
 				Sfx.play("boss_shot")
 			"summon":
@@ -1366,7 +1370,7 @@ func _update_bullets(dt: float) -> void:
 		b.life -= dt
 		b.pos += b.vel * dt
 		if b.life > 0 and b.pos.distance_squared_to(ppos) < 0.36:
-			damage_player(b.dmg)
+			damage_player(b.dmg, "bullet")
 			b.life = 0
 			burst(b.pos, 0.4, Color("ff4dd2"), 0.4)
 		if b.life > 0:
