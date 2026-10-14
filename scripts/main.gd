@@ -22,6 +22,9 @@ func _ready() -> void:
 		elif a.begins_with("--shots="):
 			shots_dir = a.substr(8)
 	for a in args:
+		if a.begins_with("--trailer="):
+			_trailer(float(a.substr(10)), "--char=" in " ".join(args))
+			return
 		if a.begins_with("--menushots="):
 			_menu_shots(a.substr(12))
 			return
@@ -185,6 +188,12 @@ func _process(_delta: float) -> void:
 	if not autotest or world == null or world.over:
 		return
 	var steps := 12 if shots_dir != "" else 30
+	if shots_dir == "trailer":
+		world.step(1.0 / 60.0)
+		if world.P.hp < 30:
+			world.P.hp = world.P.max_hp
+		world.sync_visuals(1.0 / 60.0)
+		return
 	if shots_dir != "":
 		for st in [6.0, 75.0, 186.0, 380.0, 545.0]:
 			if world.time >= st and not world.has_meta("shot%d" % st):
@@ -254,3 +263,28 @@ func _menu_shots(dir: String) -> void:
 	await get_tree().create_timer(1.0).timeout
 	await _shot(dir, "pause")
 	get_tree().quit()
+
+
+func _trailer(at: float, has_char: bool) -> void:
+	## Fast-forwards a bot run to `at` seconds, then plays in real time for recording (use with --write-movie).
+	Save.data = Save._defaults()
+	var c := "keeper"
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--char="):
+			c = a.substr(7)
+	start_run(c)
+	world.set_meta("bot", true)
+	world.set_meta("god", true)
+	autotest = true
+	shots_dir = "trailer"
+	while world.time < at:
+		world.step(1.0 / 60.0)
+		while world.pending_levels > 0:
+			world.choices = world.build_choices()
+			if world.choices.is_empty() or not world.choose(0):
+				break
+		if world.P.hp < 30:
+			world.P.hp = world.P.max_hp
+	world.cam_target = Vector3(world.ppos.x, 0, world.ppos.y)
+	for e in world.enemies:
+		e.spawn_t = 1.0

@@ -576,6 +576,10 @@ func show_hud(w: World) -> void:
 
 func _process(_dt: float) -> void:
 	card_lock -= _dt
+	var want_hidden := hud.visible and current == "" and world != null and is_instance_valid(world) and world.mode == "run"
+	var mm := Input.MOUSE_MODE_HIDDEN if want_hidden else Input.MOUSE_MODE_VISIBLE
+	if Input.mouse_mode != mm:
+		Input.mouse_mode = mm
 	if not hud.visible or world == null or not is_instance_valid(world) or world.mode != "run":
 		return
 	var P := world.P
