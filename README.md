@@ -18,7 +18,8 @@ You are the last lantern-bearer in an endless night. Shadow creatures close in f
 - **A Halloween world** in four regions that blend into each other: the Graveyard, the Pumpkin Fields, the Dead Woods and the Chapel Ruins. A **Blood Moon** rises in the final hour.
 - **Jack-o'-lanterns** you can smash for a Treat (loot) or a Trick (a bat swarm). **Gourdlings**, a hopping jack-o'-lantern enemy, light a fuse and explode, which you can dash out of.
 - **Lantern shrines**: stand beside one to kindle it for a blessing (Warmth, Insight, Fury or Haste).
-- **A story**: an intro, 12 memories of the fallen Order recovered from shrines, and an ending at the first dawn. The **Journal** keeps them.
+- **A story with dialogue**: an intro, boss conversations with live 3D portraits the first time you meet each boss, a line from each Keeper as a run begins, shrine spirits, 12 memories of the fallen Order recovered from shrines, an ending at the first dawn and a true ending on Night 5. The **Journal** keeps them. Conversations can be turned off in Settings.
+- **2-player co-op**: a second controller presses Start on the Keeper screen to join, and picks a Keeper with LB/RB. Each player has their own build and level-ups. A downed player gets back up when a teammate stands beside them, and the run ends only when everyone is down. On Steam, **Remote Play Together** turns this into online co-op with no extra code.
 - **7 playable Keepers**, each with a different starting weapon and stats. Six of them unlock through achievements.
 - **4 boss fights**: the Ashen Warden, the Hollow Choir, the Warden reborn, and the Hollow King. Bosses use telegraphed dashes, bullet rings, spirals, and summons.
 - **Meta-progression**: the Sanctum shop spends Embers earned in each run on permanent upgrades.
@@ -75,9 +76,10 @@ godot --headless --export-release "Linux"   build/linux/TheLastLantern.x86_64
    | `trailer.mp4` | Gameplay trailer (rebuild with `tools/store/make_trailer.sh`) |
 
 5. **Upload the builds** with SteamPipe (steamcmd from the Steamworks SDK). Use one depot for `build/windows` and one for `build/linux`. Set the launch options to `TheLastLantern.exe` (Windows) and `TheLastLantern.x86_64` (Linux).
-6. **Put the "Coming Soon" page up early.** It must be live for at least 2 weeks before release, and **wishlists before launch are the biggest predictor of sales**.
-7. **Price:** this genre typically sells for **$2.99–$4.99**. A 10–20% launch discount helps.
-8. Before launch, change `application/company_name` in `export_presets.cfg` to your studio name.
+6. **Turn on online co-op through Remote Play Together.** In Steamworks, open *Store Page → Basic Info → Features* and tick **Shared/Split Screen Co-op** and **Remote Play Together**. Steam then lets a player invite a friend into their game over the internet. The friend doesn't need to own the game.
+7. **Put the "Coming Soon" page up early.** It must be live for at least 2 weeks before release, and **wishlists before launch are the biggest predictor of sales**.
+8. **Price:** this genre typically sells for **$2.99–$4.99**. A 10–20% launch discount helps.
+9. Before launch, change `application/company_name` in `export_presets.cfg` to your studio name.
 
 ### Halloween timing (October 31)
 

@@ -23,9 +23,13 @@ Walk into the fog with nothing but a lantern and a single weapon. Your weapons f
 - Survive the Blood Moon of the final hour
 
 **Rekindle the shrines, recover the story**
-- Light lantern shrines for powerful blessings
-- Each shrine returns a memory of the fallen Order, and of Aldric, the Lamplighter who stole the sun
-- Read every recovered memory in your Journal
+- Meet the bosses face to face: the Ashen Warden still guarding his road, the Hollow Choir singing the wrong hymn, and Aldric, the Lamplighter who stole the sun
+- Light lantern shrines for powerful blessings, and hear the spirits of the fallen Order
+- Recover 12 memories, read them in your Journal, and earn the true ending on the longest night
+
+**Play together**
+- 2-player couch co-op: each player builds their own Keeper, and you revive each other when one falls
+- Play online with a friend through Steam Remote Play Together
 
 **Build your light**
 - 7 weapons that grow over 6 levels, and 13 relics
@@ -47,7 +51,11 @@ Walk into the fog with nothing but a lantern and a single weapon. Your weapons f
 
 Action Roguelike, Bullet Hell, Roguelite, Survival, Halloween, Dark Fantasy, Indie, Casual, Controller, Singleplayer, Atmospheric, Top-Down, 3D
 
-Use the first five: Action Roguelike, Bullet Hell, Roguelite, Survival, Halloween.
+Use the first five: Action Roguelike, Bullet Hell, Roguelite, Survival, Halloween. Also add **Local Co-Op** and **Co-op**.
+
+## Steam features to tick
+
+Single-player, Shared/Split Screen Co-op, Remote Play Together, Full controller support, Steam Achievements, Remote Play on TV, Steam Deck.
 
 ## Languages to tick in Steamworks
 

@@ -2878,6 +2878,15 @@ func _bot_move() -> Vector2:
 			elif d < 225.0 and d < bd:
 				bd = d
 				best = s.pos
+	# In co-op, a downed teammate comes first.
+	for j in players.size():
+		if j != ci and player_down(j):
+			var dp := player_pos(j)
+			if dp.distance_squared_to(ppos) > 2.0:
+				best = dp
+				at_shrine = false
+			else:
+				best = null
 	if best != null and not at_shrine:
 		mv += (best - ppos).normalized() * 0.8
 	return mv.normalized() if mv.length() > 0.05 else Vector2.ZERO
