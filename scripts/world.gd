@@ -1250,7 +1250,7 @@ func _update_enemies(dt: float) -> void:
 				elif dist < 9.5:
 					mv = Vector2(-d.y, d.x) * e.dir
 					sp *= 0.55
-				e.shoot_t -= dt
+				e.shoot_t = maxf(0.0, e.shoot_t - dt)
 				if e.shoot_t <= 0 and dist < 13.0:
 					e.shoot_t = randf_range(2.4, 3.4)
 					fire_bullet(e.pos, d.angle(), 5.5, e.dmg)
@@ -1869,7 +1869,7 @@ func sync_visuals(dt: float) -> void:
 		var base := 1.45 if e.elite else 1.0
 		var sc := base * (ease(e.spawn_t, 0.4) if e.spawn_t < 1.0 else 1.0)
 		if e.type == "spitter":
-			sc *= 1.0 + maxf(0, 0.4 - e.shoot_t) * 0.5
+			sc *= 1.0 + clampf(0.4 - e.shoot_t, 0.0, 0.4) * 0.6
 		n.scale = Vector3.ONE * maxf(0.01, sc)
 		var want := 1 if e.flash > 0 else (3 if e.slow > 0 and not e.boss else (2 if e.elite else 0))
 		if want != e.overlay:

@@ -193,6 +193,13 @@ func _process(_delta: float) -> void:
 		if world.P.hp < 30:
 			world.P.hp = world.P.max_hp
 		world.sync_visuals(1.0 / 60.0)
+		test_log_t += 1
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--snap=") and int(test_log_t) == 150:
+				await RenderingServer.frame_post_draw
+				get_viewport().get_texture().get_image().save_png(a.substr(7))
+				print("SNAP ", a.substr(7))
+				get_tree().quit()
 		return
 	if shots_dir != "":
 		for st in [6.0, 75.0, 186.0, 380.0, 545.0]:
