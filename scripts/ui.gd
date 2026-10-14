@@ -1658,6 +1658,18 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _visible("settings"):
 			_settings_back()
 			get_viewport().set_input_as_handled()
+			return
+		if current == "pause" and _visible("pause"):
+			main.toggle_pause()  # B / Esc resumes
+			get_viewport().set_input_as_handled()
+			return
+		if _visible("story"):
+			# B works like Continue: finish the text, then move on.
+			for b in screens["story"].find_children("*", "Button", true, false):
+				b.pressed.emit()
+				break
+			get_viewport().set_input_as_handled()
+			return
 	if current == "level":
 		if event is InputEventKey and event.pressed and not event.echo:
 			var k: int = event.physical_keycode - KEY_1

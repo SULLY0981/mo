@@ -40,6 +40,9 @@ func _ready() -> void:
 		if a.begins_with("--mapshots="):
 			_map_shots(a.substr(11))
 			return
+		if a == "--padtest":
+			_pad_test()
+			return
 		if a.begins_with("--cards="):
 			_cards(a.substr(8))
 			return
@@ -442,6 +445,38 @@ func _cards(dir: String) -> void:
 		sub.text = c[2]
 		await get_tree().create_timer(0.4).timeout
 		await _shot(dir, c[0])
+	get_tree().quit()
+
+
+func _pad_test() -> void:
+	## Simulates controller presses through the menus and prints what happened.
+	Save.set_meta("no_persist", true)
+	Save.data.seen_intro = true
+	go_menu()
+	var press := func(btn: int) -> void:
+		for down in [true, false]:
+			var ev := InputEventJoypadButton.new()
+			ev.button_index = btn
+			ev.pressed = down
+			ev.device = 0
+			Input.parse_input_event(ev)
+			await get_tree().process_frame
+		await get_tree().create_timer(0.3).timeout
+	await get_tree().create_timer(0.5).timeout
+	await press.call(JOY_BUTTON_A)
+	print("PADTEST A on menu -> chars visible: ", ui._visible("chars"))
+	await press.call(JOY_BUTTON_B)
+	print("PADTEST B on chars -> menu visible: ", ui._visible("menu"))
+	ui.show_settings("menu")
+	await get_tree().create_timer(0.3).timeout
+	await press.call(JOY_BUTTON_B)
+	print("PADTEST B on settings -> menu visible: ", ui._visible("menu"))
+	start_run("keeper")
+	await get_tree().create_timer(0.5).timeout
+	toggle_pause()
+	await get_tree().create_timer(0.3).timeout
+	await press.call(JOY_BUTTON_B)
+	print("PADTEST B on pause -> resumed: ", not get_tree().paused and ui.current == "")
 	get_tree().quit()
 
 

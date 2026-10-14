@@ -106,6 +106,17 @@ func apply() -> void:
 			jm.axis_value = FIXED_AXES[action][1]
 			jm.device = p1_pad()
 			InputMap.action_add_event(action, jm)
+	# Menus: A confirms and B goes back on every controller (Godot's defaults are keyboard-only).
+	for pair in [["ui_accept", JOY_BUTTON_A], ["ui_cancel", JOY_BUTTON_B]]:
+		var has := false
+		for e in InputMap.action_get_events(pair[0]):
+			if e is InputEventJoypadButton and e.button_index == pair[1]:
+				has = true
+		if not has:
+			var jb := InputEventJoypadButton.new()
+			jb.button_index = pair[1]
+			jb.device = -1
+			InputMap.action_add_event(pair[0], jb)
 	device_changed.emit()
 
 
