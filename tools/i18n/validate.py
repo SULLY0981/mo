@@ -6,6 +6,7 @@ Reports missing keys, extra keys, and placeholders (%d %s %.2f %%) that differ i
 Exit code 1 if anything is wrong.
 """
 import json, re, sys, pathlib
+sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 PH = re.compile(r"%(?:\.\d+)?[dsf%]")

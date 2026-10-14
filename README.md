@@ -73,7 +73,7 @@ godot --headless --export-release "Linux"   build/linux/TheLastLantern.x86_64
    | `library_logo_1280x720.png` | Library logo |
    | `community_icon_184x184.png` | Community icon |
    | `screenshots/*.png` | Store screenshots (1920×1080) |
-   | `trailer.mp4` | Gameplay trailer (rebuild with `tools/store/make_trailer.sh`) |
+   | `trailer.mp4` | Gameplay trailer (rebuild with `python tools/store/make_trailer.py`) |
 
 5. **Upload the builds** with SteamPipe (steamcmd from the Steamworks SDK). Use one depot for `build/windows` and one for `build/linux`. Set the launch options to `TheLastLantern.exe` (Windows) and `TheLastLantern.x86_64` (Linux).
 6. **Turn on online co-op through Remote Play Together.** In Steamworks, open *Store Page → Basic Info → Features* and tick **Shared/Split Screen Co-op** and **Remote Play Together**. Steam then lets a player invite a friend into their game over the internet. The friend doesn't need to own the game.
@@ -118,7 +118,7 @@ blender -b -P tools/blender/render_keyart.py -- /tmp/wide.png 2464 1412 64 wide
 blender -b -P tools/blender/render_keyart.py -- /tmp/tall.png 1200 1440 64 tall
 blender -b -P tools/blender/render_keyart.py -- /tmp/hero.png 3840 1240 40 hero
 tools/store/make_store_art.sh /tmp/wide.png /tmp/tall.png /tmp/hero.png <folder with Cinzel TTFs>
-tools/store/make_trailer.sh <folder with Cinzel/Alegreya TTFs>   # records gameplay clips + cuts trailer
+python tools/store/make_trailer.py   # records clips, renders title cards, cuts store/trailer.mp4 and refreshes store/screenshots (needs godot + ffmpeg)
 ```
 
 ## Testing

@@ -31,6 +31,7 @@ func _ready() -> void:
 			ui._build_ach_toast()
 	for a in args:
 		if a.begins_with("--trailer="):
+			go_menu()
 			_trailer(float(a.substr(10)), "--char=" in " ".join(args))
 			return
 		if a.begins_with("--menushots="):
@@ -38,6 +39,9 @@ func _ready() -> void:
 			return
 		if a.begins_with("--mapshots="):
 			_map_shots(a.substr(11))
+			return
+		if a.begins_with("--cards="):
+			_cards(a.substr(8))
 			return
 		if a.begins_with("--bestiary="):
 			_bestiary_shot(a.substr(11))
@@ -401,6 +405,46 @@ func _map_shots(dir: String) -> void:
 	get_tree().quit()
 
 
+func _cards(dir: String) -> void:
+	## Renders the trailer's title cards with the game's own fonts.
+	var bg := TextureRect.new()
+	bg.texture = load("res://assets/icon.png")  # replaced below if the store art is available
+	var img := Image.load_from_file(ProjectSettings.globalize_path("res://store/page_background_1438x810.png"))
+	if img:
+		bg.texture = ImageTexture.create_from_image(img)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.modulate = Color(0.5, 0.5, 0.55)
+	ui.root.add_child(bg)
+	var logo := TextureRect.new()
+	var limg := Image.load_from_file(ProjectSettings.globalize_path("res://store/logo.png"))
+	if limg:
+		logo.texture = ImageTexture.create_from_image(limg)
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ui._place(logo, 0.5, 0.5, -560, -330, 1120, 460)
+	ui.root.add_child(logo)
+	var line := ui._label("", 50, ui.f_body, Color("e9dcff"), HORIZONTAL_ALIGNMENT_CENTER)
+	ui._place(line, 0.5, 0.5, -900, 170, 1800, 80)
+	line.label_settings.outline_size = 8
+	ui.root.add_child(line)
+	var sub := ui._label("", 34, ui.f_bold, Color("ffd166"), HORIZONTAL_ALIGNMENT_CENTER)
+	ui._place(sub, 0.5, 0.5, -900, 250, 1800, 60)
+	sub.label_settings.outline_size = 6
+	ui.root.add_child(sub)
+	var cards := [["t0", "The night is endless. Your light is not.", ""],
+		["t1", "Rekindle the shrines. Remember the fallen.", ""],
+		["t2", "Bring a friend.", "2-player co-op  ·  Remote Play Together"],
+		["t9", "Wishlist now on Steam", "Coming Halloween season"]]
+	for c in cards:
+		line.text = tr(c[1])
+		sub.text = c[2]
+		await get_tree().create_timer(0.4).timeout
+		await _shot(dir, c[0])
+	get_tree().quit()
+
+
 func _bestiary_shot(dir: String) -> void:
 	Save.data = Save._defaults()
 	Save.data.settings.autopause = false
@@ -454,10 +498,10 @@ func _trailer(at: float, has_char: bool) -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--char="):
 			c = a.substr(7)
+	autotest = true  # set before start_run so --coop adds the bot partner
 	start_run(c)
 	world.set_meta("bot", true)
 	world.set_meta("god", true)
-	autotest = true
 	shots_dir = "trailer"
 	while world.time < at:
 		world.step(1.0 / 60.0)

@@ -30,7 +30,7 @@ for f in (ROOT / "scripts").glob("*.gd"):
 data = (ROOT / "scripts" / "data.gd").read_text(encoding="utf-8")
 for m in re.finditer(STR, data):
     s = unescape(m.group(1))
-    if len(s) < 3 or s.startswith("ACH_") or re.fullmatch(r"[0-9a-fA-F]{6}", s):
+    if len(s) < 3 or s.startswith(("ACH_", "http", "--", "%0", "lantern-")) or re.fullmatch(r"[0-9a-fA-F]{6}", s):
         continue
     if re.fullmatch(r"[a-z_0-9]+", s):  # ids and dictionary keys
         continue

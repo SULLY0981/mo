@@ -1,6 +1,5 @@
 {
  "\"Keep the flame,\" they say together. \"You always did.\"": "",
- "%04d-%02d-%02d": "",
  "%d / %d unlocked": "",
  "%d Embers": "",
  "+0.1 HP/s": "",
@@ -57,7 +56,6 @@
  "+8% Move Speed": "",
  "+8% XP Gain": "",
  "+HP": "",
- "--demo": "",
  "-15% Cooldown": "",
  "-15% Cooldowns, -15% HP.": "",
  "-20% Cooldown": "",
@@ -426,8 +424,5 @@
  "Your dash scorches enemies in its path and recharges 15% faster.": "",
  "Your weapon can awaken! Open a chest to awaken it.": "",
  "Your wounds close.": "",
- "has awakened": "",
- "https://store.steampowered.com/app/1234560/The_Last_Lantern/": "",
- "https://store.steampowered.com/search/?term=The+Last+Lantern": "",
- "lantern-": ""
+ "has awakened": ""
 }

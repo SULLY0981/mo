@@ -283,7 +283,7 @@ func show_menu() -> void:
 		if b is Button:
 			b.custom_minimum_size.y = 56
 	var hint := _label(_menu_hint(), 20, f_body, Color(0.45, 0.4, 0.58), HORIZONTAL_ALIGNMENT_CENTER)
-	_place(hint, 0.5, 1, -700, -50, 1400, 30)
+	_place(hint, 0.5, 1, -380, -50, 1400, 30)  # right of the menu column so it never touches Quit
 	s.add_child(hint)
 	hint_label = hint
 	var ver := _label("v" + str(ProjectSettings.get_setting("application/config/version")), 18, f_body, Color(0.35, 0.3, 0.45))
