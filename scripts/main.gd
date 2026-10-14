@@ -17,6 +17,9 @@ func _ready() -> void:
 	Save.achievement_unlocked.connect(ui.on_achievement)
 	var args := OS.get_cmdline_user_args()
 	for a in args:
+		if a == "--autotest" or a.begins_with("--trailer=") or a.begins_with("--menushots="):
+			Save.set_meta("no_persist", true)
+	for a in args:
 		if a == "--autotest":
 			autotest = true
 		elif a.begins_with("--shots="):
@@ -191,7 +194,7 @@ func _process(_delta: float) -> void:
 	if shots_dir == "trailer":
 		var dt := minf(_delta, 1.0 / 30.0)
 		world.step(dt)
-		if world.P.hp < 30:
+		if world.P.hp < world.P.max_hp * 0.5:
 			world.P.hp = world.P.max_hp
 		world.sync_visuals(dt)
 		test_log_t += 1
@@ -276,6 +279,8 @@ func _menu_shots(dir: String) -> void:
 func _trailer(at: float, has_char: bool) -> void:
 	## Fast-forwards a bot run to `at` seconds, then plays in real time for recording (use with --write-movie).
 	Save.data = Save._defaults()
+	for ach in Data.ACHIEVEMENTS:
+		Save.data.ach[ach.id] = 1  # no popups in recorded footage
 	var c := "keeper"
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--char="):
@@ -294,6 +299,9 @@ func _trailer(at: float, has_char: bool) -> void:
 		if world.P.hp < 30:
 			world.P.hp = world.P.max_hp
 	world.cam_target = Vector3(world.ppos.x, 0, world.ppos.y)
+	world.hurt = 0.0
+	world.P.hp = world.P.max_hp
+	ui.clear_messages()
 	for e in world.enemies:
 		e.spawn_t = 1.0
 

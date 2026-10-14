@@ -649,8 +649,10 @@ func toast(text: String, color: Color) -> void:
 	var l := _label(text, 32, f_bold, color, HORIZONTAL_ALIGNMENT_CENTER)
 	l.label_settings.outline_size = 8
 	toast_box.add_child(l)
-	if toast_box.get_child_count() > 4:
-		toast_box.get_child(0).queue_free()
+	while toast_box.get_child_count() > 3:
+		var old := toast_box.get_child(0)
+		toast_box.remove_child(old)
+		old.queue_free()
 	var tw := l.create_tween()
 	tw.tween_interval(2.0)
 	tw.tween_property(l, "modulate:a", 0.0, 0.5)
@@ -864,3 +866,11 @@ func _next_ach() -> void:
 	tw.tween_property(ach_panel, "offset_left", 20.0, 0.3)
 	tw.parallel().tween_property(ach_panel, "offset_right", 480.0, 0.3)
 	tw.tween_callback(_next_ach)
+
+
+func clear_messages() -> void:
+	for c in toast_box.get_children():
+		toast_box.remove_child(c)
+		c.queue_free()
+	ach_queue.clear()
+	banner_box.modulate.a = 0

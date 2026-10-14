@@ -46,6 +46,8 @@ func _load() -> void:
 
 
 func persist() -> void:
+	if has_meta("no_persist"):
+		return  # test/recording modes must never touch the player's save
 	var f := FileAccess.open(PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(data))
